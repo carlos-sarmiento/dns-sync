@@ -1,0 +1,1 @@
+# DNS-SYNC for DNSMasq

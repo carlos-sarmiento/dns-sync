@@ -1,0 +1,15 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "extensions": {
+        "recommendations": [
+            "ms-dotnettools.csharp"
+        ]
+    },
+    "settings": {
+        "editor.formatOnSave": true
+    }
+}

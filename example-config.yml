@@ -1,0 +1,19 @@
+log_level: information 
+
+scan_frequency: 15 # how frequently should we sync dns records
+
+auth: # If using HTTPS connections, this section is needed
+  mutual_tls: 
+    pfx_file: /path/to/pfxFileWithCertAndKey.pfx
+    password: passwordOfFileAbove
+
+hosts: # requires at least one record.
+  - uri: unix:///var/run/docker.sock # path to the docker socket. Make sure you've mounted it to the container
+    hostname: docker.local
+  - uri: https://docker.remote:2376 # hostname is optional for https connection because we can infer the url
+    
+dnsmasq:
+  target_file: /path/to/fileDnsmasqWillRead # required. Name of the file where the records will be dropped
+   # if host_url and container_name are provided, app will restart dnsmasq container
+  host_uri:  https://dnsmasq.local:2376
+  container_name: dnsmasq

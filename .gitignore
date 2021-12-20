@@ -1,0 +1,9 @@
+**/*
+
+!.gitignore
+!example-config.yml
+!src
+!src/**
+!dns-sync.code-workspace
+!Dockerfile
+!README.md
