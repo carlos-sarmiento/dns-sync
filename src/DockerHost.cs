@@ -10,10 +10,11 @@ namespace dns_sync
 {
     internal class DockerHost
     {
-        public DockerHost(Uri hostUri, string? hostnameOverride, CertificateCredentials? credentials)
+        public DockerHost(Uri hostUri, string? hostnameOverride, bool useAddressRecords, CertificateCredentials? credentials)
         {
             ConnectionUri = hostUri;
             Hostname = hostnameOverride ?? hostUri.Host;
+            UseAddressRecords = useAddressRecords;
 
             var config = new DockerClientConfiguration(hostUri, credentials, TimeSpan.FromSeconds(10));
             this.client = config.CreateClient();
@@ -22,6 +23,7 @@ namespace dns_sync
         private DockerClient client { get; set; }
 
         public string Hostname { get; private set; }
+        public bool UseAddressRecords { get; private set; }
 
         public Uri ConnectionUri { get; private set; }
 
@@ -55,6 +57,7 @@ namespace dns_sync
                       {
                           Uri = this.ConnectionUri.ToString(),
                           Hostname = this.Hostname,
+                          UseAddressRecords = this.UseAddressRecords,
                           ContainerName = this.Hostname + name,
                           Domains = parsedMappings,
                           IsMappingEnabled = isEnabled
@@ -85,7 +88,7 @@ namespace dns_sync
         public string Uri { get; init; }
 
         public string ContainerName { get; init; }
-
+        public bool UseAddressRecords { get; init; }
         public bool IsMappingEnabled { get; init; }
         public IList<string> Domains { get; init; }
     }

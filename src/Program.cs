@@ -34,7 +34,7 @@ namespace dns_sync
         static async Task Exec(string[] args)
         {
             DnsSyncLogger.LogCritical("Starting Up");
-            var config = DnsSyncConfig.LoadAndValidate("/config/config.yml");
+            var config = DnsSyncConfig.LoadAndValidate("../config.yml");
 
             DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
 
@@ -53,7 +53,10 @@ namespace dns_sync
                  var hostUri = new Uri(hostConfig.Uri);
                  var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
 
-                 return new DockerHost(hostUri, hostConfig.Hostname, isMTLS ? credentials : null);
+                 return hostConfig.IpAddress == null
+                        ? new DockerHost(hostUri, hostConfig.Hostname, false, isMTLS ? credentials : null)
+                        : new DockerHost(hostUri, hostConfig.IpAddress, true, isMTLS ? credentials : null);
+
              }).ToList() ?? new List<DockerHost>();
 
 
@@ -66,7 +69,7 @@ namespace dns_sync
                 var hostUri = new Uri(dnsmasqUri);
                 var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
 
-                dnsmasqDockerHost = new DockerHost(hostUri, "", isMTLS ? credentials : null);
+                dnsmasqDockerHost = new DockerHost(hostUri, "", false, isMTLS ? credentials : null);
             }
 
             while (!SigtermCalled)
@@ -144,6 +147,7 @@ namespace dns_sync
 
                 var hostname = recordsPerHost.First().Hostname;
 
+
                 foreach (var container in recordsPerHost)
                 {
                     if (container.IsMappingEnabled)
@@ -159,8 +163,15 @@ namespace dns_sync
                             }
 
                             duplicateDetection[domain] = container.ContainerName;
+                            if (container.UseAddressRecords)
+                            {
+                                dnsmasqFile.AppendLine($"address=/{domain}/{hostname}");
 
-                            dnsmasqFile.AppendLine($"cname={domain},{hostname}");
+                            }
+                            else
+                            {
+                                dnsmasqFile.AppendLine($"cname={domain},{hostname}");
+                            }
                         }
                         dnsmasqFile.AppendLine("");
                     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -126,6 +127,7 @@ namespace dns_sync
 
         public string Uri { get; set; }
         public string? Hostname { get; set; }
+        public string? IpAddress { get; set; }
 
         public void ThrowIfConfigIsInvalid()
         {
@@ -134,17 +136,38 @@ namespace dns_sync
                 throw new Exception($"Invalid URI provided for docker host: {this.Uri}");
             }
 
+            this.ThrowIfHostnameIsInvalid();
+            this.ThrowIfIPAddressIsInvalid();
+
+            if (this.Hostname != null && this.IpAddress != null)
+            {
+                throw new Exception($"Setup both Hostname and IP Address mapping for host: {this.Uri}");
+            }
+
+            var hostUri = new Uri(this.Uri);
+
+            if (Hostname == null && this.IpAddress == null && hostUri.Scheme == "unix")
+            {
+                throw new Exception($"Cannot infer a hostname from a Unix Socket connection: {this.Uri}");
+            }
+        }
+
+        public void ThrowIfIPAddressIsInvalid()
+        {
+            if (IpAddress != null && !IPAddress.TryParse(this.IpAddress, out var ipaddress))
+            {
+                throw new Exception($"Invalid IP Address provided for host: {this.Uri}");
+            }
+        }
+
+        public void ThrowIfHostnameIsInvalid()
+        {
             if (Hostname != null && string.IsNullOrWhiteSpace(Hostname))
             {
                 throw new Exception($"Invalid Hostname Override provided for docker host: {this.Uri}");
             }
 
-            var hostUri = new Uri(this.Uri);
 
-            if (Hostname == null && hostUri.Scheme == "unix")
-            {
-                throw new Exception($"Cannot infer a hostname from a Unix Socket connection: {this.Uri}");
-            }
         }
     }
 
