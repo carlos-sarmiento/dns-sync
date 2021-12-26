@@ -31,13 +31,8 @@ namespace dns_sync
             }
         }
 
-        static async Task Exec(string[] args)
+        static CertificateCredentials? BuildAuthCredentials(DnsSyncConfig config)
         {
-            DnsSyncLogger.LogCritical("Starting Up");
-            var config = DnsSyncConfig.LoadAndValidate("../config.yml");
-
-            DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
-
             CertificateCredentials? credentials = null;
             if (config.Auth?.MutualTls != null)
             {
@@ -47,6 +42,18 @@ namespace dns_sync
                              config.Auth.MutualTls.Password);
                 credentials = new CertificateCredentials(cert);
             }
+
+            return credentials;
+        }
+
+        static async Task Exec(string[] args)
+        {
+            DnsSyncLogger.LogCritical("Starting Up");
+            var config = DnsSyncConfig.LoadAndValidate("../config.yml");
+
+            DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
+
+            var credentials = BuildAuthCredentials(config);
 
             List<DockerHost> hostsToMonitor = config.Hosts?.Select(hostConfig =>
              {
@@ -59,7 +66,21 @@ namespace dns_sync
 
              }).ToList() ?? new List<DockerHost>();
 
+            while (!SigtermCalled)
+            {
+                var dnsmasqContent = await GenerateDnsMasqFile(hostsToMonitor);
 
+                var wasDnsmasqFileUpdated = UpdateDnsMasqFile(config, dnsmasqContent);
+
+                await RestartDnsmasqInstance(config, wasDnsmasqFileUpdated);
+
+                DnsSyncLogger.LogDebug($"Waiting for {config.ScanFrequency} seconds");
+                await Task.Delay(TimeSpan.FromSeconds(config.ScanFrequency));
+            }
+        }
+
+        static async Task RestartDnsmasqInstance(DnsSyncConfig config, bool wasDnsmasqFileUpdated)
+        {
             var dnsmasqUri = config.Dnsmasq?.HostUri;
             var dnsmasqContainerName = config.Dnsmasq?.ContainerName;
             DockerHost? dnsmasqDockerHost = null;
@@ -69,37 +90,34 @@ namespace dns_sync
                 var hostUri = new Uri(dnsmasqUri);
                 var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
 
-                dnsmasqDockerHost = new DockerHost(hostUri, "", false, isMTLS ? credentials : null);
+                dnsmasqDockerHost = new DockerHost(hostUri, "", false, isMTLS ? BuildAuthCredentials(config) : null);
             }
 
-            while (!SigtermCalled)
+            if (wasDnsmasqFileUpdated && dnsmasqDockerHost != null && dnsmasqContainerName != null)
             {
+                DnsSyncLogger.LogWarning("Restarting DNSMasq Container");
+                await dnsmasqDockerHost.RestartContainer(dnsmasqContainerName);
+            }
+        }
 
-                var dnsmasqContent = await GenerateDnsMasqFile(hostsToMonitor);
-                var targetFile = config.Dnsmasq?.TargetFile ?? "";
+        internal static bool UpdateDnsMasqFile(DnsSyncConfig config, string newDnsmasqContent)
+        {
+            var targetFile = config.Dnsmasq?.TargetFile ?? "";
 
-                var previousFile = System.IO.File.ReadAllText(targetFile);
+            var previousFile = System.IO.File.ReadAllText(targetFile);
 
-                if (dnsmasqContent != previousFile)
-                {
-                    DnsSyncLogger.LogWarning("DNSMasq File Changed");
-                    previousFile = dnsmasqContent;
+            if (newDnsmasqContent != previousFile)
+            {
+                DnsSyncLogger.LogWarning("DNSMasq File Changed");
+                previousFile = newDnsmasqContent;
 
-                    System.IO.File.WriteAllText(targetFile, dnsmasqContent);
-
-                    if (dnsmasqDockerHost != null && dnsmasqContainerName != null)
-                    {
-                        DnsSyncLogger.LogWarning("Restarting DNSMasq Container");
-                        await dnsmasqDockerHost.RestartContainer(dnsmasqContainerName);
-                    }
-                }
-                else
-                {
-                    DnsSyncLogger.LogDebug("No change to DNSMasq File");
-                }
-
-                DnsSyncLogger.LogDebug($"Waiting for {config.ScanFrequency} seconds");
-                await Task.Delay(TimeSpan.FromSeconds(config.ScanFrequency));
+                System.IO.File.WriteAllText(targetFile, newDnsmasqContent);
+                return true;
+            }
+            else
+            {
+                DnsSyncLogger.LogDebug("No change to DNSMasq File");
+                return false;
             }
         }
 
