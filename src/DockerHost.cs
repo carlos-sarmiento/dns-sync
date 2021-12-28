@@ -36,17 +36,12 @@ namespace dns_sync
                       var name = c.Names.First();
                       var syncLabels = c.Labels.Where(label => label.Key.StartsWith("dns-sync.")).ToList();
 
-                      if (c.State != "running")
-                      {
-                          return null;
-                      }
-
                       if (syncLabels.Count == 0)
                       {
                           return null;
                       }
 
-                      var isEnabled = syncLabels.Any(label => label.Key == "dns-sync.enable" && label.Value == "true");
+                      var isEnabled = c.State == "running" && syncLabels.Any(label => label.Key == "dns-sync.enable" && label.Value == "true");
                       var mappingsStr = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.domains").Value ?? "";
 
                       var parsedMappings = mappingsStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
