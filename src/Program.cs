@@ -55,7 +55,7 @@ namespace dns_sync
         static async Task Exec(string[] args)
         {
             DnsSyncLogger.LogCritical("Starting Up");
-            var config = DnsSyncConfig.LoadAndValidate("../config.yml");
+            var config = DnsSyncConfig.LoadAndValidate("/config/config.yml");
 
             DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
 
