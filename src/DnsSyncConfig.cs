@@ -174,6 +174,7 @@ namespace dns_sync
     internal class DockerAuth
     {
         public DockerMutualTLSAuth? MutualTls { get; set; }
+        public bool? DoNotValidateServerCertificate { get; set; }
 
         public void ThrowIfConfigIsInvalid()
         {

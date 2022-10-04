@@ -41,6 +41,12 @@ namespace dns_sync
                              config.Auth.MutualTls.PfxFile,
                              config.Auth.MutualTls.Password);
                 credentials = new CertificateCredentials(cert);
+
+                if (config.Auth?.DoNotValidateServerCertificate == true)
+                {
+                    // Disable Certificate Validation for Server Endpoint
+                    credentials.ServerCertificateValidationCallback += (o, c, ch, er) => true;
+                }
             }
 
             return credentials;
