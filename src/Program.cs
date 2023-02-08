@@ -81,7 +81,7 @@ namespace dns_sync
                 var dnsmasqContent = GenerateDnsMasqFile(containers);
                 var wasDnsmasqFileUpdated = UpdateDnsMasqFile(config, dnsmasqContent);
 
-                var dashboardContent = GenerateDnsMasqFile(containers);
+                var dashboardContent = GenerateDashboardFile(containers);
                 var wasDashboardFileUpdaed = UpdateDashboardAppFile(config, dashboardContent);
 
                 await RestartDnsmasqInstance(config, wasDnsmasqFileUpdated);
@@ -250,7 +250,7 @@ namespace dns_sync
 
         internal static string GenerateDashboardFile(IList<ContainerDomainRecords>[] recordsToCreate)
         {
-            var apps = new List<object>();
+            var categories = new List<object>();
 
             foreach (var recordsPerHost in recordsToCreate)
             {
@@ -260,6 +260,8 @@ namespace dns_sync
                 }
 
                 var hostname = recordsPerHost.First().Hostname;
+                var apps = new List<object>();
+
                 foreach (var container in recordsPerHost)
                 {
                     if (container.IsMappingEnabled)
@@ -268,16 +270,24 @@ namespace dns_sync
                         {
                             name = $"{container.Description}",
                             displayURL = container.Domains.FirstOrDefault() ?? "",
-                            url = container.Domains.FirstOrDefault() ?? "",
+                            url = "https://" + container.Domains.FirstOrDefault() ?? "",
                             icon = "tv",
+                            newTab = true,
                         });
                     }
                 }
+
+                categories.Add(new {
+                    name = hostname,
+                    items = apps
+                });
             }
+
             return JsonSerializer.Serialize(new
             {
-                apps = apps
-            });
+                categories = categories
+            },
+            new JsonSerializerOptions { WriteIndented = true });
         }
     }
 }
