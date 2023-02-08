@@ -43,6 +43,7 @@ namespace dns_sync
 
                       var isEnabled = c.State == "running" && syncLabels.Any(label => label.Key == "dns-sync.enable" && label.Value == "true");
                       var mappingsStr = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.domains").Value ?? "";
+                      var description = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.description").Value ?? mappingsStr;
 
                       var parsedMappings = mappingsStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                                       .Select(s => s.Trim())
@@ -54,6 +55,7 @@ namespace dns_sync
                           Hostname = this.Hostname,
                           UseAddressRecords = this.UseAddressRecords,
                           ContainerName = this.Hostname + name,
+                          Description = description,
                           Domains = parsedMappings,
                           IsMappingEnabled = isEnabled
                       };
@@ -78,6 +80,7 @@ namespace dns_sync
             Hostname = "";
             ContainerName = "";
             Domains = new List<string>();
+            Description = "";
         }
         public string Hostname { get; init; }
         public string Uri { get; init; }
@@ -86,5 +89,6 @@ namespace dns_sync
         public bool UseAddressRecords { get; init; }
         public bool IsMappingEnabled { get; init; }
         public IList<string> Domains { get; init; }
+        public string Description { get; init; }
     }
 }

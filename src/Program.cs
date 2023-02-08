@@ -6,6 +6,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Docker.DotNet.X509;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace dns_sync
 {
@@ -74,9 +76,13 @@ namespace dns_sync
 
             while (!SigtermCalled)
             {
-                var dnsmasqContent = await GenerateDnsMasqFile(hostsToMonitor);
+                var containers = await GenerateContainers(hostsToMonitor);
 
+                var dnsmasqContent = GenerateDnsMasqFile(containers);
                 var wasDnsmasqFileUpdated = UpdateDnsMasqFile(config, dnsmasqContent);
+
+                var dashboardContent = GenerateDnsMasqFile(containers);
+                var wasDashboardFileUpdaed = UpdateDashboardAppFile(config, dashboardContent);
 
                 await RestartDnsmasqInstance(config, wasDnsmasqFileUpdated);
 
@@ -127,7 +133,33 @@ namespace dns_sync
             }
         }
 
-        internal static async Task<string> GenerateDnsMasqFile(List<DockerHost> hostsToMonitor)
+        internal static bool UpdateDashboardAppFile(DnsSyncConfig config, string newContent)
+        {
+            var targetFile = config.DashboardTargetFile ?? "";
+
+            if (string.IsNullOrWhiteSpace(targetFile))
+            {
+                return false;
+            }
+
+            var previousFile = System.IO.File.ReadAllText(targetFile);
+
+            if (newContent != previousFile)
+            {
+                DnsSyncLogger.LogWarning("Dashboard File Changed");
+                previousFile = newContent;
+
+                System.IO.File.WriteAllText(targetFile, newContent);
+                return true;
+            }
+            else
+            {
+                DnsSyncLogger.LogDebug("No change to Dashboard File");
+                return false;
+            }
+        }
+
+        internal static async Task<IList<ContainerDomainRecords>[]> GenerateContainers(List<DockerHost> hostsToMonitor)
         {
             DnsSyncLogger.LogDebug("Fetching Containers");
 
@@ -157,6 +189,12 @@ namespace dns_sync
                                                                   )
                                                               ) ?? new IList<ContainerDomainRecords>[0];
 
+
+            return recordsToCreate;
+        }
+
+        internal static string GenerateDnsMasqFile(IList<ContainerDomainRecords>[] recordsToCreate)
+        {
             var dnsmasqFile = new StringBuilder();
             var duplicateDetection = new Dictionary<string, string>();
 
@@ -176,7 +214,7 @@ namespace dns_sync
                 {
                     if (container.IsMappingEnabled)
                     {
-                        dnsmasqFile.AppendLine($"# {container.ContainerName}");
+                        dnsmasqFile.AppendLine($"# {container.ContainerName} -- {container.Description}");
 
                         foreach (var domain in container.Domains)
                         {
@@ -208,6 +246,38 @@ namespace dns_sync
             DnsSyncLogger.LogDebug("Processing Containers Done");
 
             return dnsmasqFile.ToString();
+        }
+
+        internal static string GenerateDashboardFile(IList<ContainerDomainRecords>[] recordsToCreate)
+        {
+            var apps = new List<object>();
+
+            foreach (var recordsPerHost in recordsToCreate)
+            {
+                if (!recordsPerHost.Any())
+                {
+                    continue;
+                }
+
+                var hostname = recordsPerHost.First().Hostname;
+                foreach (var container in recordsPerHost)
+                {
+                    if (container.IsMappingEnabled)
+                    {
+                        apps.Add(new
+                        {
+                            name = $"{container.Description}",
+                            displayURL = container.Domains.FirstOrDefault() ?? "",
+                            url = container.Domains.FirstOrDefault() ?? "",
+                            icon = "tv",
+                        });
+                    }
+                }
+            }
+            return JsonSerializer.Serialize(new
+            {
+                apps = apps
+            });
         }
     }
 }

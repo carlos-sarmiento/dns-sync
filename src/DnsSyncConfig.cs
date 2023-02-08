@@ -84,6 +84,8 @@ namespace dns_sync
 
         public DnsmasqConfig? Dnsmasq { get; set; }
 
+        public string? DashboardTargetFile { get; set; }
+
         public DockerAuth? Auth { get; set; }
     }
 
