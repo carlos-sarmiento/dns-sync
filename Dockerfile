@@ -1,15 +1,14 @@
-# syntax=docker/dockerfile:1
-#FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build-env
-FROM mcr.microsoft.com/dotnet/sdk:6.0-bullseye-slim-arm32v7 AS build-env
+FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /app
 
 # Copy csproj and restore as distinct layers
 COPY src/ ./
-RUN dotnet restore
-RUN dotnet publish -c Release -o out
+RUN dotnet restore -r linux-arm
+
+RUN dotnet publish -c Release -o out -r linux-arm --self-contained false --no-restore
 
 # Build runtime image
-FROM mcr.microsoft.com/dotnet/runtime:6.0-alpine
+FROM mcr.microsoft.com/dotnet/runtime:7.0-bullseye-slim-arm32v7
 WORKDIR /app
-COPY --from=build-env /app/out .
+COPY --from=build /app/out .
 ENTRYPOINT ["dotnet", "dns-sync.dll"]
