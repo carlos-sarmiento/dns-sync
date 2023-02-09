@@ -57,7 +57,10 @@ namespace dns_sync
         static async Task Exec(string[] args)
         {
             DnsSyncLogger.LogCritical("Starting Up");
-            var config = DnsSyncConfig.LoadAndValidate("/config/config.yml");
+
+            var configFileLocation = args.Any() ? args[0] : "/config/config.yml";
+
+            var config = DnsSyncConfig.LoadAndValidate(configFileLocation);
 
             DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
 
@@ -142,7 +145,15 @@ namespace dns_sync
                 return false;
             }
 
-            var previousFile = System.IO.File.ReadAllText(targetFile);
+            var previousFile = "";
+            try
+            {
+                previousFile = System.IO.File.ReadAllText(targetFile);
+            }
+            catch (System.IO.FileNotFoundException)
+            {
+                previousFile = "";
+            }
 
             if (newContent != previousFile)
             {
@@ -277,7 +288,8 @@ namespace dns_sync
                     }
                 }
 
-                categories.Add(new {
+                categories.Add(new
+                {
                     name = hostname,
                     items = apps
                 });
