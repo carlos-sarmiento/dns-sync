@@ -42,8 +42,14 @@ namespace dns_sync
                       }
 
                       var isEnabled = c.State == "running" && syncLabels.Any(label => label.Key == "dns-sync.enable" && label.Value == "true");
+                      var showInDashboard = !syncLabels.Any(label => label.Key == "dns-sync.show_in_dashboard") || syncLabels.Any(label => label.Key == "dns-sync.show_in_dashboard" && label.Value == "true");
+                      var registerOnDns = !syncLabels.Any(label => label.Key == "dns-sync.register_on_dns") || syncLabels.Any(label => label.Key == "dns-sync.register_on_dns" && label.Value == "true");
                       var mappingsStr = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.domains").Value ?? "";
                       var description = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.description").Value ?? mappingsStr;
+                      var category = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.category").Value ?? this.Hostname;
+                      var service = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.service_name").Value;
+
+
 
                       var parsedMappings = mappingsStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                                       .Select(s => s.Trim())
@@ -57,7 +63,11 @@ namespace dns_sync
                           ContainerName = this.Hostname + name,
                           Description = description,
                           Domains = parsedMappings,
-                          IsMappingEnabled = isEnabled
+                          IsMappingEnabled = isEnabled,
+                          Category = category,
+                          ShowInDashboard = showInDashboard,
+                          ServiceName = service,
+                          RegisterOnDns = registerOnDns,
                       };
                   }).WhereNotNull().ToList();
         }
@@ -70,6 +80,15 @@ namespace dns_sync
 
             await this.client.Containers.RestartContainerAsync(containerId, new ContainerRestartParameters());
         }
+
+        public async Task SendSignalToContainer(string containerName, string signal)
+        {
+            var containers = await this.client.Containers.ListContainersAsync(new ContainersListParameters());
+            var containerId = containers.Where(c => c.Names.Contains($"/{containerName}")).Select(c =>
+                               c.ID).FirstOrDefault();
+
+            await this.client.Containers.KillContainerAsync(containerId, new ContainerKillParameters() { Signal = signal });
+        }
     }
 
     internal class ContainerDomainRecords
@@ -81,13 +100,19 @@ namespace dns_sync
             ContainerName = "";
             Domains = new List<string>();
             Description = "";
+            Category = "";
+            ServiceName = "";
         }
         public string Hostname { get; init; }
         public string Uri { get; init; }
 
         public string ContainerName { get; init; }
+        public string Category { get; init; }
         public bool UseAddressRecords { get; init; }
         public bool IsMappingEnabled { get; init; }
+        public bool ShowInDashboard { get; init; }
+        public bool RegisterOnDns { get; init; }
+        public string? ServiceName { get; init; }
         public IList<string> Domains { get; init; }
         public string Description { get; init; }
     }

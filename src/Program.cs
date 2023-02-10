@@ -110,8 +110,8 @@ namespace dns_sync
 
             if (wasDnsmasqFileUpdated && dnsmasqDockerHost != null && dnsmasqContainerName != null)
             {
-                DnsSyncLogger.LogWarning("Restarting DNSMasq Container");
-                await dnsmasqDockerHost.RestartContainer(dnsmasqContainerName);
+                DnsSyncLogger.LogWarning("Reloading DNSMasq Files");
+                await dnsmasqDockerHost.SendSignalToContainer(dnsmasqContainerName, "SIGHUP");
             }
         }
 
@@ -223,7 +223,7 @@ namespace dns_sync
 
                 foreach (var container in recordsPerHost)
                 {
-                    if (container.IsMappingEnabled)
+                    if (container.IsMappingEnabled && container.RegisterOnDns)
                     {
                         dnsmasqFile.AppendLine($"# {container.ContainerName} -- {container.Description}");
 
@@ -261,7 +261,7 @@ namespace dns_sync
 
         internal static string GenerateDashboardFile(IList<ContainerDomainRecords>[] recordsToCreate)
         {
-            var categories = new List<object>();
+            var categories = new Dictionary<string, List<object>>();
 
             foreach (var recordsPerHost in recordsToCreate)
             {
@@ -275,29 +275,36 @@ namespace dns_sync
 
                 foreach (var container in recordsPerHost)
                 {
-                    if (container.IsMappingEnabled)
+                    if (!container.IsMappingEnabled || !container.ShowInDashboard)
                     {
-                        apps.Add(new
-                        {
-                            name = $"{container.Description}",
-                            displayURL = container.Domains.FirstOrDefault() ?? "",
-                            url = "https://" + container.Domains.FirstOrDefault() ?? "",
-                            icon = "tv",
-                            newTab = true,
-                        });
+                        continue;
                     }
-                }
 
-                categories.Add(new
-                {
-                    name = hostname,
-                    items = apps
-                });
+                    if (!categories.ContainsKey(container.Category))
+                    {
+                        categories[container.Category] = new List<object>();
+                    }
+
+                    categories[container.Category].Add(new
+                    {
+                        name = $"{container.Description}",
+                        displayURL = container.Domains.FirstOrDefault() ?? "",
+                        url = "https://" + container.Domains.FirstOrDefault() ?? "",
+                        icon = container.ServiceName ?? "tv",
+                        newTab = true,
+                    });
+                }
             }
+
+            var categoryList = categories.Select(val => new
+            {
+                name = val.Key,
+                items = val.Value
+            }).ToList();
 
             return JsonSerializer.Serialize(new
             {
-                categories = categories
+                categories = categoryList
             },
             new JsonSerializerOptions { WriteIndented = true });
         }
