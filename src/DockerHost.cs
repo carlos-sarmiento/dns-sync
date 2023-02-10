@@ -49,8 +49,6 @@ namespace dns_sync
                       var category = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.category").Value ?? this.Hostname;
                       var service = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.service_name").Value;
 
-
-
                       var parsedMappings = mappingsStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                                       .Select(s => s.Trim())
                                                       .Distinct().ToList();
