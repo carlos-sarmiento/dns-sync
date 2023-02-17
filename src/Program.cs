@@ -170,11 +170,11 @@ namespace dns_sync
             }
         }
 
-        internal static async Task<IList<ContainerDomainRecords>[]> GenerateContainers(List<DockerHost> hostsToMonitor)
+        internal static async Task<IList<ContainerRecord>[]> GenerateContainers(List<DockerHost> hostsToMonitor)
         {
             DnsSyncLogger.LogDebug("Fetching Containers");
 
-            IList<ContainerDomainRecords>[] recordsToCreate = (await Task.WhenAll(
+            IList<ContainerRecord>[] recordsToCreate = (await Task.WhenAll(
                                                                       hostsToMonitor.Select(
                                                                            async host =>
                                                                            {
@@ -193,18 +193,18 @@ namespace dns_sync
                                                                                catch (Exception e)
                                                                                {
                                                                                    DnsSyncLogger.LogWarning($"Error while fetching containers from {host.ConnectionUri.ToString()}'", e);
-                                                                                   return new List<ContainerDomainRecords>();
+                                                                                   return new List<ContainerRecord>();
                                                                                }
                                                                            }
                                                                       ).ToArray()
                                                                   )
-                                                              ) ?? new IList<ContainerDomainRecords>[0];
+                                                              ) ?? new IList<ContainerRecord>[0];
 
 
             return recordsToCreate;
         }
 
-        internal static string GenerateDnsMasqFile(IList<ContainerDomainRecords>[] recordsToCreate)
+        internal static string GenerateDnsMasqFile(IList<ContainerRecord>[] recordsToCreate)
         {
             var dnsmasqFile = new StringBuilder();
             var duplicateDetection = new Dictionary<string, string>();
@@ -259,7 +259,7 @@ namespace dns_sync
             return dnsmasqFile.ToString();
         }
 
-        internal static string GenerateDashboardFile(IList<ContainerDomainRecords>[] recordsToCreate)
+        internal static string GenerateDashboardFile(IList<ContainerRecord>[] recordsToCreate)
         {
             var categories = new Dictionary<string, List<object>>();
 

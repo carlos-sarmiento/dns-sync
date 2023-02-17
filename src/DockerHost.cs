@@ -27,14 +27,14 @@ namespace dns_sync
 
         public Uri ConnectionUri { get; private set; }
 
-        public async Task<IList<ContainerDomainRecords>> GetContainersToAlias()
+        public async Task<IList<ContainerRecord>> GetContainersToAlias()
         {
             var containers = await this.client.Containers.ListContainersAsync(new ContainersListParameters());
 
             return containers.Select(c =>
                   {
                       var name = c.Names.First();
-                      var syncLabels = c.Labels.Where(label => label.Key.StartsWith("dns-sync.")).ToList();
+                      var syncLabels = c.Labels.Where(label => label.Key.StartsWith("dns-sync.")).ToDictionary(a => a.Key, a => a.Value);
 
                       if (syncLabels.Count == 0)
                       {
@@ -53,7 +53,7 @@ namespace dns_sync
                                                       .Select(s => s.Trim())
                                                       .Distinct().ToList();
 
-                      return new ContainerDomainRecords()
+                      return new ContainerRecord()
                       {
                           Uri = this.ConnectionUri.ToString(),
                           Hostname = this.Hostname,
@@ -89,9 +89,9 @@ namespace dns_sync
         }
     }
 
-    internal class ContainerDomainRecords
+    internal class ContainerRecord
     {
-        public ContainerDomainRecords()
+        public ContainerRecord()
         {
             Uri = "";
             Hostname = "";
@@ -100,10 +100,10 @@ namespace dns_sync
             Description = "";
             Category = "";
             ServiceName = "";
+            Labels = new Dictionary<string, string>();
         }
         public string Hostname { get; init; }
         public string Uri { get; init; }
-
         public string ContainerName { get; init; }
         public string Category { get; init; }
         public bool UseAddressRecords { get; init; }
@@ -112,6 +112,7 @@ namespace dns_sync
         public bool RegisterOnDns { get; init; }
         public string? ServiceName { get; init; }
         public IList<string> Domains { get; init; }
+        public IDictionary<string, string> Labels { get; init; }
         public string Description { get; init; }
     }
 }
