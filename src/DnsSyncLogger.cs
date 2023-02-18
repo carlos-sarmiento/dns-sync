@@ -5,70 +5,69 @@ namespace dns_sync
 {
     public static class DnsSyncLogger
     {
-        private static ILogger logger;
+
+        private static LogLevel defaultLogLevel = LogLevel.Debug;
+        private static ILogger defaultLogger;
 
         static DnsSyncLogger()
         {
-            logger = InitializeImpl(LogLevel.Trace);
+            defaultLogger = GetLogger<Program>();
         }
 
-        private static ILogger InitializeImpl(LogLevel level)
+        private static ILoggerFactory GetLoggerFactoryForLevel(LogLevel level)
         {
-            using var loggerFactory = LoggerFactory.Create(builder =>
-                                    {
-                                        builder
-                                            .AddFilter("Microsoft", LogLevel.Warning)
-                                            .AddFilter("System", LogLevel.Warning)
-                                            .AddFilter("dns_sync.Program", level)
-                                            .AddConsole();
-                                    });
-            return loggerFactory.CreateLogger<Program>();
+            return LoggerFactory.Create(builder =>
+                                           {
+                                               builder
+                                                   .SetMinimumLevel(level)
+                                                   .AddSimpleConsole(options =>
+                                                   {
+                                                       options.IncludeScopes = false;
+                                                       options.SingleLine = true;
+                                                       options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+                                                   });
+                                           });
         }
 
-        public static void Initialize(LogLevel level)
+        public static void SetDefaultLogLevel(LogLevel level)
         {
-            logger = InitializeImpl(level);
+            defaultLogLevel = level;
+            defaultLogger = GetLogger<Program>(level);
         }
 
-        static ILogger GetLogger()
+        public static ILogger GetLogger<T>(LogLevel? level = null)
         {
-            if (logger == null)
-            {
-                Initialize(LogLevel.Debug);
-                throw new Exception("Logger has not been initialized");
-            }
-
-            return logger;
+            return GetLoggerFactoryForLevel(level ?? defaultLogLevel).CreateLogger<T>();
         }
 
         public static void LogCritical(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogCritical(exception, message, args);
+            defaultLogger.LogCritical(exception, message, args);
         }
 
         public static void LogDebug(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogDebug(exception, message, args);
+            defaultLogger.LogDebug(exception, message, args);
         }
 
         public static void LogError(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogError(exception, message, args);
+            defaultLogger.LogError(exception, message, args);
         }
 
         public static void LogInformation(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogInformation(exception, message, args);
+            defaultLogger.LogInformation(exception, message, args);
         }
 
         public static void LogTrace(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogTrace(exception, message, args);
+            defaultLogger.LogTrace(exception, message, args);
         }
 
         public static void LogWarning(string message, Exception? exception = null, params object?[] args)
         {
-            logger.LogWarning(exception, message, args);
+            defaultLogger.LogWarning(exception, message, args);
         }
     }
 }

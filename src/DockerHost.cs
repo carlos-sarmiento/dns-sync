@@ -31,41 +31,31 @@ namespace dns_sync
         {
             var containers = await this.client.Containers.ListContainersAsync(new ContainersListParameters());
 
+            var prefix = "dns-sync.";
+
             return containers.Select(c =>
                   {
                       var name = c.Names.First();
-                      var syncLabels = c.Labels.Where(label => label.Key.StartsWith("dns-sync.")).ToDictionary(a => a.Key, a => a.Value);
+                      var syncLabels = c.Labels.Where(label => label.Key.StartsWith(prefix)).ToDictionary(a => a.Key, a => a.Value);
 
                       if (syncLabels.Count == 0)
                       {
                           return null;
                       }
 
-                      var isEnabled = c.State == "running" && syncLabels.Any(label => label.Key == "dns-sync.enable" && label.Value == "true");
-                      var showInDashboard = !syncLabels.Any(label => label.Key == "dns-sync.show_in_dashboard") || syncLabels.Any(label => label.Key == "dns-sync.show_in_dashboard" && label.Value == "true");
-                      var registerOnDns = !syncLabels.Any(label => label.Key == "dns-sync.register_on_dns") || syncLabels.Any(label => label.Key == "dns-sync.register_on_dns" && label.Value == "true");
-                      var mappingsStr = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.domains").Value ?? "";
-                      var description = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.description").Value ?? mappingsStr;
-                      var category = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.category").Value ?? this.Hostname;
-                      var service = syncLabels.FirstOrDefault(label => label.Key == "dns-sync.service_name").Value;
+                      var isEnabled = c.State == "running" && syncLabels.Any(label => label.Key == $"{prefix}enable" && label.Value == "true");
+                      var service = syncLabels.FirstOrDefault(label => label.Key == $"{prefix}service_name").Value;
 
-                      var parsedMappings = mappingsStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                                                      .Select(s => s.Trim())
-                                                      .Distinct().ToList();
+                      var labels = syncLabels.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).ToDictionary(kv => kv.Key.Remove(0, prefix.Length), kv => kv.Value);
 
-                      return new ContainerRecord()
+                      return new ContainerRecord(labels)
                       {
                           Uri = this.ConnectionUri.ToString(),
                           Hostname = this.Hostname,
-                          UseAddressRecords = this.UseAddressRecords,
                           ContainerName = this.Hostname + name,
-                          Description = description,
-                          Domains = parsedMappings,
-                          IsMappingEnabled = isEnabled,
-                          Category = category,
-                          ShowInDashboard = showInDashboard,
-                          ServiceName = service,
-                          RegisterOnDns = registerOnDns,
+                          IsActiveForDnsSync = isEnabled,
+                          ServiceName = service ?? name,
+                          UseAddressRecords = this.UseAddressRecords,
                       };
                   }).WhereNotNull().ToList();
         }
@@ -89,30 +79,69 @@ namespace dns_sync
         }
     }
 
-    internal class ContainerRecord
+    public class ContainerRecord
     {
-        public ContainerRecord()
+        public ContainerRecord(IReadOnlyDictionary<string, string> labels)
         {
             Uri = "";
             Hostname = "";
             ContainerName = "";
-            Domains = new List<string>();
-            Description = "";
-            Category = "";
             ServiceName = "";
-            Labels = new Dictionary<string, string>();
+            Labels = labels;
         }
         public string Hostname { get; init; }
         public string Uri { get; init; }
         public string ContainerName { get; init; }
-        public string Category { get; init; }
+        private IReadOnlyDictionary<string, string> Labels { get; init; }
+        public bool IsActiveForDnsSync { get; init; }
+        public string ServiceName { get; init; }
         public bool UseAddressRecords { get; init; }
-        public bool IsMappingEnabled { get; init; }
-        public bool ShowInDashboard { get; init; }
-        public bool RegisterOnDns { get; init; }
-        public string? ServiceName { get; init; }
-        public IList<string> Domains { get; init; }
-        public IDictionary<string, string> Labels { get; init; }
-        public string Description { get; init; }
+        public bool GetLabelAsBool(string label, bool defaultValue = false)
+        {
+            if (Boolean.TryParse(Labels.GetValueOrDefault(label), out var val))
+            {
+                return val;
+            }
+            else
+            {
+                return defaultValue;
+            }
+        }
+
+        public bool GetLabelAsBool(string[] possibleLabels, bool defaultValue = false)
+        {
+            foreach (var label in possibleLabels)
+            {
+                if (Boolean.TryParse(Labels.GetValueOrDefault(label), out var val))
+                {
+                    return val;
+                }
+            }
+
+            return defaultValue;
+        }
+
+        public string? GetLabel(string label)
+        {
+            if (Labels.ContainsKey(label))
+            {
+                return Labels[label];
+            }
+
+            return null;
+        }
+
+        public string? GetLabel(string[] possibleLabels)
+        {
+            foreach (var label in possibleLabels)
+            {
+                if (Labels.ContainsKey(label))
+                {
+                    return Labels[label];
+                }
+            }
+
+            return null;
+        }
     }
 }

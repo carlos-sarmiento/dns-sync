@@ -2,12 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Tasks;
 using Docker.DotNet.X509;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using dns_sync.plugins;
 
 namespace dns_sync
 {
@@ -15,11 +13,13 @@ namespace dns_sync
     {
         private static bool SigtermCalled { get; set; }
 
+        private static List<IDnsSyncPlugin> ActivePlugins => new List<IDnsSyncPlugin>();
+
         static async Task Main(string[] args)
         {
             AppDomain.CurrentDomain.ProcessExit += (object? sender, EventArgs e) =>
                   {
-                      DnsSyncLogger.LogCritical("Shutting Down");
+                      DnsSyncLogger.LogInformation("Shutting Down");
                       SigtermCalled = true;
                   };
 
@@ -29,7 +29,7 @@ namespace dns_sync
             }
             catch (Exception e)
             {
-                DnsSyncLogger.LogError("Unhandled Exception", e);
+                DnsSyncLogger.LogCritical("Unhandled Exception", e);
             }
         }
 
@@ -56,260 +56,111 @@ namespace dns_sync
 
         static async Task Exec(string[] args)
         {
-            DnsSyncLogger.LogCritical("Starting Up");
+            DnsSyncLogger.LogInformation("Starting Up");
 
             var configFileLocation = args.Any() ? args[0] : "/config/config.yml";
-
             var config = DnsSyncConfig.LoadAndValidate(configFileLocation);
 
-            DnsSyncLogger.Initialize(config.LogLevel ?? LogLevel.Debug);
+            DnsSyncLogger.SetDefaultLogLevel(config.LogLevel ?? LogLevel.Debug);
 
             var credentials = BuildAuthCredentials(config);
+            var hostsToMonitor = BuildHostListAsync(config, credentials);
 
-            List<DockerHost> hostsToMonitor = config.Hosts?.Select(hostConfig =>
-             {
-                 var hostUri = new Uri(hostConfig.Uri);
-                 var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
-
-                 return hostConfig.IpAddress == null
-                        ? new DockerHost(hostUri, hostConfig.Hostname, false, isMTLS ? credentials : null)
-                        : new DockerHost(hostUri, hostConfig.IpAddress, true, isMTLS ? credentials : null);
-
-             }).ToList() ?? new List<DockerHost>();
+            var plugins = await GetConfiguredPluginsAsync(config);
 
             while (!SigtermCalled)
             {
                 var containers = await GenerateContainers(hostsToMonitor);
 
-                var dnsmasqContent = GenerateDnsMasqFile(containers);
-                var wasDnsmasqFileUpdated = UpdateDnsMasqFile(config, dnsmasqContent);
-
-                var dashboardContent = GenerateDashboardFile(containers);
-                var wasDashboardFileUpdaed = UpdateDashboardAppFile(config, dashboardContent);
-
-                await RestartDnsmasqInstance(config, wasDnsmasqFileUpdated);
+                foreach (var plugin in plugins)
+                {
+                    DnsSyncLogger.LogDebug($"Running Plugin: {plugin.GetPluginName()}");
+                    try
+                    {
+                        await plugin.ProcessContainersAsync(containers);
+                    }
+                    catch (Exception e)
+                    {
+                        DnsSyncLogger.LogError($"Error throw when processing plugin: {plugin.GetPluginName()}", e);
+                    }
+                }
 
                 DnsSyncLogger.LogDebug($"Waiting for {config.ScanFrequency} seconds");
                 await Task.Delay(TimeSpan.FromSeconds(config.ScanFrequency));
             }
         }
 
-        static async Task RestartDnsmasqInstance(DnsSyncConfig config, bool wasDnsmasqFileUpdated)
+        private static IList<DockerHost> BuildHostListAsync(DnsSyncConfig config, CertificateCredentials? credentials)
         {
-            var dnsmasqUri = config.Dnsmasq?.HostUri;
-            var dnsmasqContainerName = config.Dnsmasq?.ContainerName;
-            DockerHost? dnsmasqDockerHost = null;
+            return config.Hosts?.Select(hostConfig =>
+                 {
+                     var hostUri = new Uri(hostConfig.Uri);
+                     var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
 
-            if (dnsmasqUri != null && dnsmasqContainerName != null)
-            {
-                var hostUri = new Uri(dnsmasqUri);
-                var isMTLS = hostUri.Scheme == "https" || hostUri.Scheme == "unix";
+                     return hostConfig.IpAddress == null
+                            ? new DockerHost(hostUri, hostConfig.Hostname, false, isMTLS ? credentials : null)
+                            : new DockerHost(hostUri, hostConfig.IpAddress, true, isMTLS ? credentials : null);
 
-                dnsmasqDockerHost = new DockerHost(hostUri, "", false, isMTLS ? BuildAuthCredentials(config) : null);
-            }
-
-            if (wasDnsmasqFileUpdated && dnsmasqDockerHost != null && dnsmasqContainerName != null)
-            {
-                DnsSyncLogger.LogWarning("Reloading DNSMasq Files");
-                await dnsmasqDockerHost.SendSignalToContainer(dnsmasqContainerName, "SIGHUP");
-            }
+                 }).ToList() ?? new List<DockerHost>();
         }
 
-        internal static bool UpdateDnsMasqFile(DnsSyncConfig config, string newDnsmasqContent)
+        private static async Task<IList<IDnsSyncPlugin>> GetConfiguredPluginsAsync(DnsSyncConfig config)
         {
-            var targetFile = config.Dnsmasq?.TargetFile ?? "";
+            var pluginLibrary = new PluginLibrary()
+                .AddPluginsFromAssembly<Program>();
 
-            var previousFile = System.IO.File.ReadAllText(targetFile);
+            var pluginsToConfigure = config.Plugins.Keys;
 
-            if (newDnsmasqContent != previousFile)
+            var configuredPlugins = new List<IDnsSyncPlugin>(config.Plugins.Count);
+
+            foreach (var pluginName in pluginsToConfigure)
             {
-                DnsSyncLogger.LogWarning("DNSMasq File Changed");
-                previousFile = newDnsmasqContent;
+                try
+                {
+                    var plugin = pluginLibrary.GetPlugin(pluginName);
+                    await plugin.ConfigureAsync(config.Plugins[pluginName]);
+                    configuredPlugins.Add(plugin);
+                }
+                catch (Exception e)
+                {
+                    DnsSyncLogger.LogError($"Error while configuring plugin: {pluginName}: {e.Message}");
+                }
+            }
 
-                System.IO.File.WriteAllText(targetFile, newDnsmasqContent);
-                return true;
-            }
-            else
-            {
-                DnsSyncLogger.LogDebug("No change to DNSMasq File");
-                return false;
-            }
+            return configuredPlugins;
         }
 
-        internal static bool UpdateDashboardAppFile(DnsSyncConfig config, string newContent)
-        {
-            var targetFile = config.DashboardTargetFile ?? "";
-
-            if (string.IsNullOrWhiteSpace(targetFile))
-            {
-                return false;
-            }
-
-            var previousFile = "";
-            try
-            {
-                previousFile = System.IO.File.ReadAllText(targetFile);
-            }
-            catch (System.IO.FileNotFoundException)
-            {
-                previousFile = "";
-            }
-
-            if (newContent != previousFile)
-            {
-                DnsSyncLogger.LogWarning("Dashboard File Changed");
-                previousFile = newContent;
-
-                System.IO.File.WriteAllText(targetFile, newContent);
-                return true;
-            }
-            else
-            {
-                DnsSyncLogger.LogDebug("No change to Dashboard File");
-                return false;
-            }
-        }
-
-        internal static async Task<IList<ContainerRecord>[]> GenerateContainers(List<DockerHost> hostsToMonitor)
+        private static async Task<ContainerRecord[]> GenerateContainers(IList<DockerHost> hostsToMonitor)
         {
             DnsSyncLogger.LogDebug("Fetching Containers");
 
-            IList<ContainerRecord>[] recordsToCreate = (await Task.WhenAll(
-                                                                      hostsToMonitor.Select(
-                                                                           async host =>
-                                                                           {
-                                                                               try
-                                                                               {
-                                                                                   DnsSyncLogger.LogDebug($"Fetching Host: {host.ConnectionUri.ToString()}");
-                                                                                   var containersToAlias = await host.GetContainersToAlias();
+            var recordsToCreate = (await Task.WhenAll(
+                                        hostsToMonitor.Select(
+                                            async host =>
+                                            {
+                                                try
+                                                {
+                                                    DnsSyncLogger.LogInformation($"Fetching Host: {host.ConnectionUri.ToString()}");
+                                                    var containersToAlias = await host.GetContainersToAlias();
 
-                                                                                   foreach (var c in containersToAlias)
-                                                                                   {
-                                                                                       DnsSyncLogger.LogDebug($"Found container: {c.ContainerName} - Enabled: {c.IsMappingEnabled}");
-                                                                                   }
+                                                    foreach (var c in containersToAlias)
+                                                    {
+                                                        DnsSyncLogger.LogDebug($"Found container: {c.ContainerName} - Is Active for DNS-Sync: {c.IsActiveForDnsSync}");
+                                                    }
 
-                                                                                   return containersToAlias;
-                                                                               }
-                                                                               catch (Exception e)
-                                                                               {
-                                                                                   DnsSyncLogger.LogWarning($"Error while fetching containers from {host.ConnectionUri.ToString()}'", e);
-                                                                                   return new List<ContainerRecord>();
-                                                                               }
-                                                                           }
-                                                                      ).ToArray()
-                                                                  )
-                                                              ) ?? new IList<ContainerRecord>[0];
+                                                    return containersToAlias;
+                                                }
+                                                catch (Exception e)
+                                                {
+                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri.ToString()}'", e);
+                                                    return new List<ContainerRecord>();
+                                                }
+                                            }
+                                        ).ToArray()
+                                    )
+                                );
 
-
-            return recordsToCreate;
-        }
-
-        internal static string GenerateDnsMasqFile(IList<ContainerRecord>[] recordsToCreate)
-        {
-            var dnsmasqFile = new StringBuilder();
-            var duplicateDetection = new Dictionary<string, string>();
-
-            DnsSyncLogger.LogDebug("Processing Containers");
-
-            foreach (var recordsPerHost in recordsToCreate)
-            {
-                if (!recordsPerHost.Any())
-                {
-                    continue;
-                }
-
-                var hostname = recordsPerHost.First().Hostname;
-
-
-                foreach (var container in recordsPerHost)
-                {
-                    if (container.IsMappingEnabled && container.RegisterOnDns)
-                    {
-                        dnsmasqFile.AppendLine($"# {container.ContainerName} -- {container.Description}");
-
-                        foreach (var domain in container.Domains)
-                        {
-                            if (duplicateDetection.ContainsKey(domain))
-                            {
-                                DnsSyncLogger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
-                                continue;
-                            }
-
-                            duplicateDetection[domain] = container.ContainerName;
-                            if (container.UseAddressRecords)
-                            {
-                                dnsmasqFile.AppendLine($"address=/{domain}/{hostname}");
-
-                            }
-                            else
-                            {
-                                dnsmasqFile.AppendLine($"cname={domain},{hostname}");
-                            }
-                        }
-                        dnsmasqFile.AppendLine("");
-                    }
-                    else
-                    {
-                        DnsSyncLogger.LogDebug($"{container.ContainerName} DNS generation is disabled");
-                    }
-                }
-            }
-            DnsSyncLogger.LogDebug("Processing Containers Done");
-
-            return dnsmasqFile.ToString();
-        }
-
-        internal static string GenerateDashboardFile(IList<ContainerRecord>[] recordsToCreate)
-        {
-            var categories = new Dictionary<string, List<object>>();
-
-            foreach (var recordsPerHost in recordsToCreate)
-            {
-                if (!recordsPerHost.Any())
-                {
-                    continue;
-                }
-
-                var hostname = recordsPerHost.First().Hostname;
-                var apps = new List<object>();
-
-                foreach (var container in recordsPerHost)
-                {
-                    if (!container.IsMappingEnabled || !container.ShowInDashboard)
-                    {
-                        continue;
-                    }
-
-                    if (!categories.ContainsKey(container.Category))
-                    {
-                        categories[container.Category] = new List<object>();
-                    }
-
-                    categories[container.Category].Add(new
-                    {
-                        name = $"{container.Description}",
-                        displayURL = container.Domains.FirstOrDefault() ?? "",
-                        url = "https://" + container.Domains.FirstOrDefault() ?? "",
-                        icon = container.ServiceName ?? "tv",
-                        newTab = true,
-                    });
-                }
-            }
-
-            var categoryList = categories.Select(val => new
-            {
-                name = val.Key,
-                items = val.Value
-            }).ToList();
-
-            return JsonSerializer.Serialize(new
-            {
-                categories = categoryList
-            },
-            new JsonSerializerOptions { WriteIndented = true });
+            return recordsToCreate.SelectMany(t => t).ToArray() ?? new ContainerRecord[0];
         }
     }
 }
-
-
-

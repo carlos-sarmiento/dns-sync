@@ -7,8 +7,13 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace dns_sync
 {
-    internal class DnsSyncConfig
+    public class DnsSyncConfig
     {
+        public DnsSyncConfig()
+        {
+            Plugins = new Dictionary<string, Dictionary<string, object>>();
+        }
+
         public static DnsSyncConfig LoadAndValidate(string path)
         {
             DnsSyncLogger.LogInformation($"Loading config from: {path}");
@@ -52,11 +57,6 @@ namespace dns_sync
                 h.ThrowIfConfigIsInvalid();
             }
 
-            if (this.Dnsmasq != null)
-            {
-                this.Dnsmasq.ThrowIfConfigIsInvalid();
-            }
-
             if (this.Auth != null)
             {
                 this.Auth.ThrowIfConfigIsInvalid();
@@ -82,45 +82,12 @@ namespace dns_sync
 
         public IList<DockerHostConfig>? Hosts { get; set; }
 
-        public DnsmasqConfig? Dnsmasq { get; set; }
-
-        public string? DashboardTargetFile { get; set; }
-
         public DockerAuth? Auth { get; set; }
+
+        public Dictionary<string, Dictionary<string, object>> Plugins { get; set; }
     }
 
-    internal class DnsmasqConfig
-    {
-        public DnsmasqConfig()
-        {
-            TargetFile = "";
-        }
-
-        public string? HostUri { get; set; }
-        public string? ContainerName { get; set; }
-        public string TargetFile { get; set; }
-        public void ThrowIfConfigIsInvalid()
-        {
-            if (this.HostUri != null && string.IsNullOrWhiteSpace(this.HostUri))
-            {
-                throw new Exception($"Invalid URI provided for dnsmasq docker host: {this.HostUri}");
-            }
-
-            if (this.ContainerName != null && string.IsNullOrWhiteSpace(this.ContainerName))
-            {
-                throw new Exception($"Invalid name provided for dnsmasq docker container: {this.HostUri}");
-            }
-
-            if (string.IsNullOrWhiteSpace(this.TargetFile))
-            {
-                throw new Exception("Config is missing 'dnsmasq:target_file' section");
-            }
-
-            System.IO.File.AppendAllText(this.TargetFile, "");
-        }
-    }
-
-    internal class DockerHostConfig
+    public class DockerHostConfig
     {
         public DockerHostConfig()
         {
@@ -173,7 +140,7 @@ namespace dns_sync
         }
     }
 
-    internal class DockerAuth
+    public class DockerAuth
     {
         public DockerMutualTLSAuth? MutualTls { get; set; }
         public bool? DoNotValidateServerCertificate { get; set; }
@@ -187,7 +154,7 @@ namespace dns_sync
         }
     }
 
-    internal class DockerMutualTLSAuth
+    public class DockerMutualTLSAuth
     {
         public DockerMutualTLSAuth()
         {

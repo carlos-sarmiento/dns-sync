@@ -1,12 +1,18 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace dns_sync
+namespace dns_sync.plugins
 {
 
     public interface IDnsSyncPlugin
     {
-        internal Task ProcessContainers(DnsSyncConfig config, IList<ContainerRecord> containers);
+        public static string PluginName => "";
+
+        public string GetPluginName();
+
+        public Task ConfigureAsync(Dictionary<string, object> rawConfig);
+
+        public Task ProcessContainersAsync(IList<ContainerRecord> containers);
     }
 
 }
