@@ -118,7 +118,7 @@ namespace dns_sync
                 try
                 {
                     var plugin = pluginLibrary.GetPlugin(pluginName);
-                    await plugin.ConfigureAsync(config.Plugins[pluginName]);
+                    await plugin.ConfigureAsync(config.Plugins[pluginName] ?? new Dictionary<string, object>());
                     configuredPlugins.Add(plugin);
                 }
                 catch (Exception e)

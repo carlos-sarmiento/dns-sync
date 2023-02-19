@@ -92,7 +92,7 @@ namespace dns_sync
         public string Hostname { get; init; }
         public string Uri { get; init; }
         public string ContainerName { get; init; }
-        private IReadOnlyDictionary<string, string> Labels { get; init; }
+        public IReadOnlyDictionary<string, string> Labels { get; init; }
         public bool IsActiveForDnsSync { get; init; }
         public string ServiceName { get; init; }
         public bool UseAddressRecords { get; init; }
