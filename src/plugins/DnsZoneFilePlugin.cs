@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,12 +12,12 @@ namespace dns_sync.plugins
     {
         public static string PluginName => "dns_zone_file";
 
+        private string TargetFile { get; set; }
+
         public DnsZoneFilePlugin()
         {
             TargetFile = "";
         }
-
-        private string TargetFile { get; set; }
 
         public override Task ConfigureAsync(Dictionary<string, object> rawConfig)
         {
@@ -27,7 +26,7 @@ namespace dns_sync.plugins
             var targetFile = rawConfig.GetValueOrDefault("target_file") as string;
             if (string.IsNullOrWhiteSpace(targetFile))
             {
-                throw new Exception($"Invalid target_file provided for dnsmasq plugin: {rawConfig["target_file"].ToString()}");
+                throw new Exception($"Invalid target_file provided for dns_zone_file plugin: {rawConfig["target_file"].ToString()}");
             }
             else
             {
@@ -35,118 +34,133 @@ namespace dns_sync.plugins
             }
 
             System.IO.File.AppendAllText(this.TargetFile, "");
-
             return Task.CompletedTask;
         }
 
         public override Task ProcessContainersAsync(IList<ContainerRecord> containers)
         {
-            var dnsmasqContent = GenerateFile(containers);
-            var wasDnsmasqFileUpdated = UpdateFile(dnsmasqContent);
+            var content = GenerateFile(containers);
+            UpdateFile(content);
 
             return Task.CompletedTask;
         }
 
-        private string GenerateFile(IList<ContainerRecord> recordsToCreate)
+        private string GenerateFile(IList<ContainerRecord> containers)
         {
-
             var dnsmasqFile = new StringBuilder();
             var duplicateDetection = new Dictionary<string, string>();
 
-            var wwww = recordsToCreate.GroupBy(c => c.Hostname).ToDictionary(c => c.Key, c => c.ToArray());
 
-            foreach (var recordsPerHost in wwww)
+            var dnsRecordsToCreate = new List<DnsZoneRecord>();
+
+            foreach (var container in containers)
             {
-                if (!recordsPerHost.Value.Any())
+                if (container.IsActiveForDnsSync && container.GetLabelAsBool(new[] { "dnsmasq.register", "dns.register", "register_on_dns" }, defaultValue: true))
                 {
-                    continue;
-                }
+                    var domains = container.GetLabel(new[] { "dnsmasq.domains", "dns.domains", "domains" }) ?? "";
 
-                var hostname = recordsPerHost.Key;
-
-
-                foreach (var container in recordsPerHost.Value)
-                {
-                    if (container.IsActiveForDnsSync && container.GetLabelAsBool(new[] { "dnsmasq.register", "dns.register", "register_on_dns" }, defaultValue: true))
+                    if (string.IsNullOrWhiteSpace(domains))
                     {
+                        Logger.LogError($"{container.ContainerName} has no domains to register on DNS.");
+                    }
 
-                        var domains = container.GetLabel(new[] { "dnsmasq.domains", "dns.domains", "domains" }) ?? "";
+                    var description = container.GetLabel("description") ?? domains;
+                    var splitDomains = domains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-                        if (string.IsNullOrWhiteSpace(domains))
+                    foreach (var domain in splitDomains)
+                    {
+                        if (duplicateDetection.ContainsKey(domain))
                         {
-                            Logger.LogError($"{container.ContainerName} has no domains to register on DNS.");
+                            Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
+                            continue;
                         }
 
-
-                        var description = container.GetLabel("description") ?? domains;
-                        var splitDomains = domains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-                        dnsmasqFile.AppendLine($"; {container.ContainerName} -- {description}");
-
-                        foreach (var domain in splitDomains)
+                        if (domain == container.Hostname)
                         {
-                            if (duplicateDetection.ContainsKey(domain))
-                            {
-                                Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
-                                continue;
-                            }
-
-                            duplicateDetection[domain] = container.ContainerName;
-                            if (container.UseAddressRecords)
-                            {
-                                dnsmasqFile.AppendLine($"{domain}. IN  A {hostname}");
-
-                            }
-                            else
-                            {
-                                if (domain != hostname)
-                                {
-                                    dnsmasqFile.AppendLine($"{domain}. IN  CNAME {hostname}");
-                                }
-                                else
-                                {
-                                    Logger.LogError($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
-                                }
-                            }
+                            Logger.LogError($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
+                            continue;
                         }
-                        dnsmasqFile.AppendLine("");
-                    }
-                    else
-                    {
-                        Logger.LogDebug($"{container.ContainerName} DNS generation is disabled");
+
+                        duplicateDetection[domain] = container.ContainerName;
+
+                        dnsRecordsToCreate.Add(new DnsZoneRecord
+                        {
+                            Comment = $"{description} -- {container.ContainerName}",
+                            Domain = domain,
+                            Hostname = container.Hostname,
+                            RecordType = container.UseAddressRecords ? "A" : "CNAME",
+                            RecordValue = container.Hostname,
+                        });
                     }
                 }
+                else
+                {
+                    Logger.LogDebug($"{container.ContainerName} DNS generation is disabled");
+                }
+            }
+
+            var domainLengthPadding = (dnsRecordsToCreate.Select(c => c.Domain.Length).Max()) + 1;
+            var recordTypePadding = (dnsRecordsToCreate.Select(c => c.RecordType.Length).Max()) + 1;
+            var recordValuePadding = (dnsRecordsToCreate.Select(c => c.RecordValue.Length).Max()) + 1;
+
+            var groupedRecords = dnsRecordsToCreate.GroupBy(c => c.Hostname);
+            foreach (var recordsPerHost in groupedRecords.OrderBy(c => c.Key))
+            {
+                dnsmasqFile.AppendLine($"; =====  {recordsPerHost.Key.ToUpperInvariant()}  =====");
+
+                foreach (var container in recordsPerHost.OrderBy(c => c.Domain))
+                {
+                    var domain = $"{container.Domain}.".PadRight(domainLengthPadding);
+                    var recordValue = container.Hostname.PadRight(recordValuePadding);
+                    var recordType = container.RecordType.PadRight(recordTypePadding);
+                    dnsmasqFile.AppendLine($"{domain} IN {recordType} {recordValue} ; {container.Comment}");
+                }
+
+                dnsmasqFile.AppendLine("");
+                dnsmasqFile.AppendLine("");
             }
 
             Logger.LogDebug("Processing Containers Done");
-
             return dnsmasqFile.ToString();
-
         }
 
-        private bool UpdateFile(string newDnsmasqContent)
+        private void UpdateFile(string content)
         {
-
             var previousFile = System.IO.File.ReadAllText(this.TargetFile);
 
-            if (newDnsmasqContent != previousFile)
+            if (content != previousFile)
             {
-                Logger.LogWarning("DNSMasq File Changed");
-                previousFile = newDnsmasqContent;
-
-                System.IO.File.WriteAllText(this.TargetFile, newDnsmasqContent);
-                return true;
+                Logger.LogWarning("DNS Zone File Changed");
+                previousFile = content;
+                System.IO.File.WriteAllText(this.TargetFile, content);
             }
             else
             {
-                Logger.LogDebug("No change to DNSMasq File");
-                return false;
+                Logger.LogDebug("No change to DNS Zone File");
             }
         }
 
         public override string GetPluginName()
         {
             return PluginName;
+        }
+
+        private record DnsZoneRecord
+        {
+            public DnsZoneRecord()
+            {
+                Domain = "";
+                Hostname = "";
+                Comment = "";
+                RecordType = "";
+                RecordValue = "";
+            }
+
+            public string Domain { get; init; }
+            public string Hostname { get; init; }
+            public string Comment { get; init; }
+            public string RecordType { get; init; }
+            public string RecordValue { get; init; }
         }
     }
 }
