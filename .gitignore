@@ -6,4 +6,6 @@
 !src/**
 !dns-sync.code-workspace
 !Dockerfile
+!*.Dockerfile
+!build-multiarch.sh
 !README.md
