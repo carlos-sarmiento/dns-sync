@@ -18,6 +18,13 @@ namespace dns_sync.plugins
             return PluginName;
         }
 
+        private string TargetFile { get; set; }
+
+        public PrintAllLabelsPlugin()
+        {
+            TargetFile = "";
+        }
+
         private bool RunOnce { get; set; }
 
         private bool HasRun { get; set; }
@@ -28,6 +35,9 @@ namespace dns_sync.plugins
 
             var runOnce = rawConfig.GetValueOrDefault("run_once") as string;
             RunOnce = bool.TryParse(runOnce, out var runOnceParsed) ? runOnceParsed : true;
+
+            this.TargetFile = rawConfig.GetValueOrDefault("target_file") as string ?? "/dev/fd/1"; // STDOUT on Linux is default 
+            System.IO.File.AppendAllText(this.TargetFile, "");
 
             return Task.CompletedTask;
         }
@@ -59,8 +69,7 @@ namespace dns_sync.plugins
                 str.AppendLine($"{label.Key}: {label.Value}");
             }
 
-            Logger.LogInformation("All Labels:");
-            Console.WriteLine(str.ToString());
+            System.IO.File.WriteAllText(this.TargetFile, str.ToString());
 
             HasRun = true;
             return Task.CompletedTask;
