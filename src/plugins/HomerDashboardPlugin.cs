@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
@@ -85,8 +84,14 @@ namespace dns_sync.plugins
                 var category = container.GetLabel(new[] { "homer.category", "category" }) ?? container.Hostname;
                 var displayUrl = container.GetLabel(new[] { "homer.display_url", "display_url", "dns.domains", "domains" }) ?? "";
                 var url = container.GetLabel(new[] { "homer.url", "url", "dns.domains", "domains" }) ?? "";
-                var icon = container.GetLabel(new[] { "homer.icon", "icon" }) ?? "tv";
+                var icon = container.GetLabel(new[] { "homer.icon", "icon" });
                 var description = container.GetLabel("description") ?? displayUrl;
+                var type = container.GetLabel("homer.type") ?? "Ping";
+
+                if (!string.IsNullOrWhiteSpace(icon) && icon.StartsWith("dai:"))
+                {
+                    icon = $"https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/{icon.Substring(4)}.png";
+                }
 
                 if (string.IsNullOrWhiteSpace(url))
                 {
@@ -109,10 +114,12 @@ namespace dns_sync.plugins
                     name = description,
                     logo = icon,
                     subtitle = container.ContainerName,
-                    tag = "",
+                    type = type,
+                    tag = (string?)null,
                     keywords = new string[0],
                     url = $"https://{url}",
                     target = "_blank",
+                    method = "GET"
                 });
             }
 
