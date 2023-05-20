@@ -123,7 +123,7 @@ namespace dns_sync
                 }
                 catch (Exception e)
                 {
-                    DnsSyncLogger.LogError($"Error while configuring plugin: {pluginName}: {e.Message}");
+                    DnsSyncLogger.LogError($"Error while configuring plugin: {pluginName}: {e.Message}", e);
                 }
             }
 
@@ -152,7 +152,7 @@ namespace dns_sync
                                                 }
                                                 catch (Exception e)
                                                 {
-                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri.ToString()}'", e);
+                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri.ToString()}' {e.Message}");
                                                     return new List<ContainerRecord>();
                                                 }
                                             }

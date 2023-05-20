@@ -89,6 +89,18 @@ namespace dns_sync
             ServiceName = "";
             Labels = labels;
         }
+
+        public static ContainerRecord Empty()
+        {
+            return new ContainerRecord(new Dictionary<string, string>());
+        }
+
+
+        public override string ToString()
+        {
+            return $"{this.ContainerName}";
+        }
+
         public string Hostname { get; init; }
         public string Uri { get; init; }
         public string ContainerName { get; init; }
