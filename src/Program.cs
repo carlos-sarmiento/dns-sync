@@ -132,7 +132,7 @@ namespace dns_sync
 
         private static async Task<ContainerRecord[]> GenerateContainers(IList<DockerHost> hostsToMonitor)
         {
-            DnsSyncLogger.LogDebug("Fetching Containers");
+            DnsSyncLogger.LogInformation("Updating From All Servers");
 
             var recordsToCreate = (await Task.WhenAll(
                                         hostsToMonitor.Select(
@@ -140,7 +140,7 @@ namespace dns_sync
                                             {
                                                 try
                                                 {
-                                                    DnsSyncLogger.LogInformation($"Fetching Host: {host.ConnectionUri.ToString()}");
+                                                    DnsSyncLogger.LogDebug($"Fetching Host: {host.ConnectionUri}");
                                                     var containersToAlias = await host.GetContainersToAlias();
 
                                                     foreach (var c in containersToAlias)
@@ -150,15 +150,17 @@ namespace dns_sync
 
                                                     return containersToAlias;
                                                 }
-                                                catch (Exception e)
+                                                catch (Exception)
                                                 {
-                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri.ToString()}");
+                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri}");
                                                     return new List<ContainerRecord>();
                                                 }
                                             }
                                         ).ToArray()
                                     )
                                 );
+
+            DnsSyncLogger.LogInformation("Update Completed");
 
             return recordsToCreate.SelectMany(t => t).ToArray() ?? new ContainerRecord[0];
         }
