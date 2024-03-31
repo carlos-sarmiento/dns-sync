@@ -134,6 +134,8 @@ namespace dns_sync.plugins
             var response = query.CreateResponseInstance();
             request.Response = response;
 
+            response.IsRecursionAllowed = true;
+
             if (query.Questions.Count != 1)
             {
                 response.ReturnCode = ReturnCode.ServerFailure;
@@ -201,10 +203,10 @@ namespace dns_sync.plugins
                 {
                     response.AnswerRecords.Add(record);
                 }
-                foreach (DnsRecordBase record in answer.AdditionalRecords)
-                {
-                    response.AdditionalRecords.Add(record);
-                }
+                // foreach (DnsRecordBase record in answer.AdditionalRecords)
+                // {
+                //     response.AdditionalRecords.Add(record);
+                // }
 
                 response.ReturnCode = answer.ReturnCode;
             }
@@ -231,18 +233,16 @@ namespace dns_sync.plugins
             {
                 Logger.LogInformation($"Received answer for Query {id}");
 
-
-
                 foreach (DnsRecordBase record in answer.AnswerRecords)
                 {
                     Logger.LogInformation($"Query {id}: {record}");
                     response.AnswerRecords.Add(record);
                 }
-                foreach (DnsRecordBase record in answer.AdditionalRecords)
-                {
-                    Logger.LogInformation($"Query {id}: {record}");
-                    response.AdditionalRecords.Add(record);
-                }
+                // foreach (DnsRecordBase record in answer.AdditionalRecords)
+                // {
+                //     Logger.LogInformation($"Query {id}: {record}");
+                //     response.AdditionalRecords.Add(record);
+                // }
 
                 response.ReturnCode = answer.ReturnCode;
             }
@@ -271,7 +271,7 @@ namespace dns_sync.plugins
         private async Task ResolveCname(DomainName original, string targetDomain, DnsMessage response)
         {
             var target = DomainName.Parse(targetDomain);
-            response.AnswerRecords.Add(new CNameRecord(target, 0, original));
+            response.AnswerRecords.Add(new CNameRecord(original, 0, target));
 
             if (UpstreamClient == null)
             {
@@ -287,10 +287,10 @@ namespace dns_sync.plugins
                 {
                     response.AnswerRecords.Add(record);
                 }
-                foreach (DnsRecordBase record in answer.AdditionalRecords)
-                {
-                    response.AdditionalRecords.Add(record);
-                }
+                // foreach (DnsRecordBase record in answer.AdditionalRecords)
+                // {
+                //     response.AdditionalRecords.Add(record);
+                // }
             }
             else
             {
