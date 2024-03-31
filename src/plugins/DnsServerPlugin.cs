@@ -148,7 +148,7 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                await ForwardTransparentQuery(question, response);
+                await ForwardTransparentQuery(query.TransactionID, question, response);
                 return;
             }
 
@@ -173,7 +173,7 @@ namespace dns_sync.plugins
 
             if (ForwardUnmatched)
             {
-                await ForwardTransparentQuery(question, response);
+                await ForwardTransparentQuery(query.TransactionID, question, response);
                 return;
             }
 
@@ -215,7 +215,7 @@ namespace dns_sync.plugins
         }
 
 
-        private async Task ForwardTransparentQuery(DnsQuestion question, DnsMessage response)
+        private async Task ForwardTransparentQuery(ushort id, DnsQuestion question, DnsMessage response)
         {
             if (!ForwardUnmatched || UpstreamClient == null)
             {
@@ -223,18 +223,24 @@ namespace dns_sync.plugins
                 return;
             }
 
-            Logger.LogInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+            Logger.LogInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
             var answer = await UpstreamClient.ResolveAsync(question.Name, question.RecordType, question.RecordClass);
 
             if (answer != null && answer.AnswerRecords.Count > 0)
             {
+                Logger.LogInformation($"Received answer for Query {id}");
+
+
+
                 foreach (DnsRecordBase record in answer.AnswerRecords)
                 {
+                    Logger.LogInformation($"Query {id}: {record}");
                     response.AnswerRecords.Add(record);
                 }
                 foreach (DnsRecordBase record in answer.AdditionalRecords)
                 {
+                    Logger.LogInformation($"Query {id}: {record}");
                     response.AdditionalRecords.Add(record);
                 }
 
@@ -242,6 +248,8 @@ namespace dns_sync.plugins
             }
             else
             {
+                Logger.LogInformation($"Received NO answer for Query {id}");
+
                 var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
                 if (domainToRewrite != null)
                 {
