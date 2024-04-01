@@ -148,6 +148,12 @@ namespace dns_sync.plugins
 
             Logger.LogInformation($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
+            if (question.RecordType == RecordType.Aaaa)
+            {
+                response.ReturnCode = ReturnCode.NoError;
+                return;
+            }
+
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
                 await ForwardTransparentQuery(query.TransactionID, question, response);
