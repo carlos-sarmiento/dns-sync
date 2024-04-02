@@ -34,7 +34,6 @@ namespace dns_sync.plugins
         public DnsServerPlugin()
         {
             Server = new DnsServer();
-            ForwardUnmatched = true;
         }
 
         private DnsClient? UpstreamClient { get; set; }
@@ -48,6 +47,8 @@ namespace dns_sync.plugins
         private Dictionary<string, string> DomainRewritingRules = new();
 
         public static string PluginName => "dnsserver";
+
+        private bool LogQueries { get; set; }
 
         public override string GetPluginName()
         {
@@ -102,6 +103,15 @@ namespace dns_sync.plugins
                 ForwardUnmatched = forwardUnmatched;
             }
 
+            var isValidLogQueries = bool.TryParse(rawConfig.GetValueOrDefault("log_queries", "false").ToString(), out var logQueries);
+            if (!isValidLogQueries)
+            {
+                throw new Exception($"Invalid Value for Log Queries Unmatched Requests provided for DNS-Server Plugin: {rawConfig["log_queries"]}");
+            }
+            else
+            {
+                LogQueries = logQueries;
+            }
             var rewrittenDomains = rawConfig.GetValueOrDefault("rewritten_domains", new Dictionary<object, object>()) as Dictionary<object, object>;
             if (rewrittenDomains == null || rewrittenDomains.Any(kvp => kvp.Value is not string || kvp.Key is not string))
             {
@@ -122,9 +132,25 @@ namespace dns_sync.plugins
             return Task.CompletedTask;
         }
 
+        private void LogQueryDebug(string message)
+        {
+            if (LogQueries)
+            {
+                Logger.LogDebug(message);
+            }
+        }
+
+        private void LogQueryInformation(string message)
+        {
+            if (LogQueries)
+            {
+                Logger.LogInformation(message);
+            }
+        }
+
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)
         {
-            Logger.LogDebug($"Received Query");
+
 
             if (request.Query is not DnsMessage query)
             {
@@ -138,6 +164,8 @@ namespace dns_sync.plugins
 
             if (query.Questions.Count != 1)
             {
+                LogQueryDebug($"Received Query with more than one question");
+
                 response.ReturnCode = ReturnCode.ServerFailure;
                 return;
             }
@@ -146,7 +174,7 @@ namespace dns_sync.plugins
 
             var question = query.Questions[0];
 
-            Logger.LogInformation($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+            LogQueryInformation($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
             if (question.RecordType == RecordType.Aaaa)
             {
@@ -162,7 +190,7 @@ namespace dns_sync.plugins
 
             if (Records.TryGetValue(question.Name, out DnsRecord? value))
             {
-                Logger.LogInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
+                LogQueryInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
 
                 switch (value.RecordType)
                 {
@@ -185,7 +213,7 @@ namespace dns_sync.plugins
                 return;
             }
 
-            Logger.LogInformation($"No record found for '{question.Name}'");
+            LogQueryInformation($"No record found for '{question.Name}'");
             response.ReturnCode = ReturnCode.NxDomain;
         }
 
@@ -197,7 +225,7 @@ namespace dns_sync.plugins
                 return;
             }
 
-            Logger.LogInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
+            LogQueryInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
 
             var answer = await UpstreamClient.ResolveAsync(rewrittenQuestion.Name, rewrittenQuestion.RecordType, rewrittenQuestion.RecordClass);
 
@@ -231,30 +259,26 @@ namespace dns_sync.plugins
                 return;
             }
 
-            Logger.LogInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+            LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
             var answer = await UpstreamClient.ResolveAsync(question.Name, question.RecordType, question.RecordClass);
 
             if (answer != null && answer.AnswerRecords.Count > 0)
             {
-                Logger.LogInformation($"Received answer for Query {id}");
+                LogQueryInformation($"Received answer for Query {id}");
 
                 foreach (DnsRecordBase record in answer.AnswerRecords)
                 {
-                    Logger.LogInformation($"Query {id}: {record}");
+                    LogQueryInformation($"Query {id}: {record}");
                     response.AnswerRecords.Add(record);
                 }
-                // foreach (DnsRecordBase record in answer.AdditionalRecords)
-                // {
-                //     Logger.LogInformation($"Query {id}: {record}");
-                //     response.AdditionalRecords.Add(record);
-                // }
+
 
                 response.ReturnCode = answer.ReturnCode;
             }
             else
             {
-                Logger.LogInformation($"Received NO answer for Query {id}");
+                LogQueryInformation($"Received NO answer for Query {id}");
 
                 var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
                 if (domainToRewrite != null)
