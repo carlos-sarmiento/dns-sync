@@ -298,7 +298,8 @@ namespace dns_sync.plugins
 
                 answers = await ForwardRewrittenQuery(id, question, rewrittenQuestion);
             }
-            else
+
+            if (answers.Count == 0)
             {
                 LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
@@ -319,6 +320,7 @@ namespace dns_sync.plugins
                     LogQueryInformation($"Received NO answer for Query {id}");
                 }
             }
+
             return answers;
         }
 
