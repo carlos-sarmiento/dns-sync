@@ -228,7 +228,7 @@ namespace dns_sync.plugins
 
             var answer = await UpstreamClient.ResolveAsync(rewrittenQuestion.Name, rewrittenQuestion.RecordType, rewrittenQuestion.RecordClass);
 
-            if (answer != null)
+            if (answer != null && answer.AnswerRecords.Count > 0)
             {
                 response.AnswerRecords.Add(new CNameRecord(originalQuestion.Name, 0, rewrittenQuestion.Name));
 
@@ -240,6 +240,8 @@ namespace dns_sync.plugins
                 response.ReturnCode = answer.ReturnCode;
                 return true;
             }
+
+            LogQueryInformation($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
 
             return false;
         }
