@@ -237,10 +237,6 @@ namespace dns_sync.plugins
                 {
                     response.AnswerRecords.Add(record);
                 }
-                // foreach (DnsRecordBase record in answer.AdditionalRecords)
-                // {
-                //     response.AdditionalRecords.Add(record);
-                // }
 
                 response.ReturnCode = answer.ReturnCode;
             }
@@ -256,6 +252,23 @@ namespace dns_sync.plugins
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 response.ReturnCode = ReturnCode.ServerFailure;
+                return;
+            }
+
+
+            var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
+            if (domainToRewrite != null)
+            {
+                LogQueryInformation($"Rewritting Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+
+                var targetDomain = DomainRewritingRules[domainToRewrite];
+                var rewrittenQuestion = new DnsQuestion(
+                    DomainName.Parse(question.Name.ToString().Replace(domainToRewrite, targetDomain)),
+                    question.RecordType,
+                    question.RecordClass
+                );
+
+                await ForwardRewrittenQuery(question, rewrittenQuestion, response);
                 return;
             }
 
@@ -279,21 +292,6 @@ namespace dns_sync.plugins
             else
             {
                 LogQueryInformation($"Received NO answer for Query {id}");
-
-                var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
-                if (domainToRewrite != null)
-                {
-                    var targetDomain = DomainRewritingRules[domainToRewrite];
-                    var rewrittenQuestion = new DnsQuestion(
-                        DomainName.Parse(question.Name.ToString().Replace(domainToRewrite, targetDomain)),
-                        question.RecordType,
-                        question.RecordClass
-                    );
-
-                    await ForwardRewrittenQuery(question, rewrittenQuestion, response);
-                    return;
-                }
-
                 response.ReturnCode = ReturnCode.NxDomain;
             }
         }
