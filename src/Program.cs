@@ -153,7 +153,7 @@ namespace dns_sync
                                                 catch (Exception e)
                                                 {
                                                     DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri}");
-                                                    DnsSyncLogger.LogDebug(e.Message);
+                                                    DnsSyncLogger.LogDebug(e.ToString());
 
                                                     return new List<ContainerRecord>();
                                                 }
