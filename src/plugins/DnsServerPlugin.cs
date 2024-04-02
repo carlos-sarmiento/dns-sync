@@ -217,12 +217,11 @@ namespace dns_sync.plugins
             response.ReturnCode = ReturnCode.NxDomain;
         }
 
-        private async Task ForwardRewrittenQuery(DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion, DnsMessage response)
+        private async Task<bool> ForwardRewrittenQuery(DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion, DnsMessage response)
         {
             if (!ForwardUnmatched || UpstreamClient == null)
             {
-                response.ReturnCode = ReturnCode.ServerFailure;
-                return;
+                return false;
             }
 
             LogQueryInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
@@ -239,11 +238,10 @@ namespace dns_sync.plugins
                 }
 
                 response.ReturnCode = answer.ReturnCode;
+                return true;
             }
-            else
-            {
-                response.ReturnCode = ReturnCode.NxDomain;
-            }
+
+            return false;
         }
 
 
@@ -268,8 +266,12 @@ namespace dns_sync.plugins
                     question.RecordClass
                 );
 
-                await ForwardRewrittenQuery(question, rewrittenQuestion, response);
-                return;
+                var success = await ForwardRewrittenQuery(question, rewrittenQuestion, response);
+
+                if (success)
+                {
+                    return;
+                }
             }
 
             LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
