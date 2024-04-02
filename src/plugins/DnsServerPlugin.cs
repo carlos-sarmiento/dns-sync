@@ -196,11 +196,9 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                response.AnswerRecords.AddRange(await ForwardQuery(query.TransactionID, question));
-                return;
+                answers = await ForwardQuery(query.TransactionID, question);
             }
-
-            if (Records.TryGetValue(question.Name, out DnsRecord? value))
+            else if (Records.TryGetValue(question.Name, out DnsRecord? value))
             {
                 LogQueryInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
 
@@ -216,19 +214,21 @@ namespace dns_sync.plugins
                         throw new Exception("Unhandled Record Type");
                 }
 
-                response.AnswerRecords.AddRange(answers);
-
-                return;
             }
-
-            if (ForwardUnmatched)
+            else if (ForwardUnmatched)
             {
-                response.AnswerRecords.AddRange(await ForwardQuery(query.TransactionID, question));
-                return;
+                answers = await ForwardQuery(query.TransactionID, question);
             }
 
-            LogQueryInformation($"No record found for '{question.Name}'");
-            response.ReturnCode = ReturnCode.NxDomain;
+            if (answers.Count > 0)
+            {
+                response.AnswerRecords.AddRange(answers);
+            }
+            else
+            {
+                LogQueryInformation($"No record found for '{question.Name}'");
+                response.ReturnCode = ReturnCode.NxDomain;
+            }
         }
 
         private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion)
