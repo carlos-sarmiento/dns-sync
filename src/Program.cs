@@ -150,9 +150,11 @@ namespace dns_sync
 
                                                     return containersToAlias;
                                                 }
-                                                catch (Exception)
+                                                catch (Exception e)
                                                 {
                                                     DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri}");
+                                                    DnsSyncLogger.LogDebug(e.Message);
+
                                                     return new List<ContainerRecord>();
                                                 }
                                             }
