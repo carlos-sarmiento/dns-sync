@@ -50,6 +50,8 @@ namespace dns_sync.plugins
 
         private bool LogQueries { get; set; }
 
+        private bool FlattenCnames { get; set; }
+
         public override string GetPluginName()
         {
             return PluginName;
@@ -106,12 +108,23 @@ namespace dns_sync.plugins
             var isValidLogQueries = bool.TryParse(rawConfig.GetValueOrDefault("log_queries", "false").ToString(), out var logQueries);
             if (!isValidLogQueries)
             {
-                throw new Exception($"Invalid Value for Log Queries Unmatched Requests provided for DNS-Server Plugin: {rawConfig["log_queries"]}");
+                throw new Exception($"Invalid Value for Log Queries provided for DNS-Server Plugin: {rawConfig["log_queries"]}");
             }
             else
             {
                 LogQueries = logQueries;
             }
+
+            var isValidFlattenRecords = bool.TryParse(rawConfig.GetValueOrDefault("flatten_cnames", "true").ToString(), out var flattenRecords);
+            if (!isValidFlattenRecords)
+            {
+                throw new Exception($"Invalid Value for Flatten CNames provided for DNS-Server Plugin: {rawConfig["flatten_cnames"]}");
+            }
+            else
+            {
+                FlattenCnames = flattenRecords;
+            }
+
             var rewrittenDomains = rawConfig.GetValueOrDefault("rewritten_domains", new Dictionary<object, object>()) as Dictionary<object, object>;
             if (rewrittenDomains == null || rewrittenDomains.Any(kvp => kvp.Value is not string || kvp.Key is not string))
             {
@@ -150,8 +163,6 @@ namespace dns_sync.plugins
 
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)
         {
-
-
             if (request.Query is not DnsMessage query)
             {
                 return;
@@ -159,7 +170,6 @@ namespace dns_sync.plugins
 
             var response = query.CreateResponseInstance();
             request.Response = response;
-
             response.IsRecursionAllowed = true;
 
             if (query.Questions.Count != 1)
@@ -182,9 +192,11 @@ namespace dns_sync.plugins
                 return;
             }
 
+            var answers = new List<DnsRecordBase>();
+
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                await ForwardTransparentQuery(query.TransactionID, question, response);
+                response.AnswerRecords.AddRange(await ForwardQuery(query.TransactionID, question));
                 return;
             }
 
@@ -195,21 +207,23 @@ namespace dns_sync.plugins
                 switch (value.RecordType)
                 {
                     case RecordType.CName:
-                        await ResolveCname(value.Domain, value.Response, response);
+                        answers = await ResolveCname(query.TransactionID, value.Domain, value.Response);
                         break;
                     case RecordType.A:
-                        response.AnswerRecords.Add(new ARecord(value.Domain, 60, IPAddress.Parse(value.Response)));
+                        answers.Add(new ARecord(value.Domain, 60, IPAddress.Parse(value.Response)));
                         break;
                     default:
                         throw new Exception("Unhandled Record Type");
                 }
+
+                response.AnswerRecords.AddRange(answers);
 
                 return;
             }
 
             if (ForwardUnmatched)
             {
-                await ForwardTransparentQuery(query.TransactionID, question, response);
+                response.AnswerRecords.AddRange(await ForwardQuery(query.TransactionID, question));
                 return;
             }
 
@@ -217,43 +231,57 @@ namespace dns_sync.plugins
             response.ReturnCode = ReturnCode.NxDomain;
         }
 
-        private async Task<bool> ForwardRewrittenQuery(DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion, DnsMessage response)
+        private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion)
         {
             if (!ForwardUnmatched || UpstreamClient == null)
             {
-                return false;
+                return [];
             }
 
             LogQueryInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
 
-            var answer = await UpstreamClient.ResolveAsync(rewrittenQuestion.Name, rewrittenQuestion.RecordType, rewrittenQuestion.RecordClass);
-
-            if (answer != null && answer.AnswerRecords.Count > 0)
+            var forwardAnswers = await ForwardQuery(id, rewrittenQuestion);
+            var answers = new List<DnsRecordBase>();
+            if (forwardAnswers.Count > 0)
             {
-                response.AnswerRecords.Add(new CNameRecord(originalQuestion.Name, 0, rewrittenQuestion.Name));
-
-                foreach (DnsRecordBase record in answer.AnswerRecords)
+                if (!FlattenCnames)
                 {
-                    response.AnswerRecords.Add(record);
+                    answers.Add(new CNameRecord(originalQuestion.Name, 0, rewrittenQuestion.Name));
                 }
 
-                response.ReturnCode = answer.ReturnCode;
-                return true;
+                foreach (DnsRecordBase record in forwardAnswers)
+                {
+                    if (FlattenCnames)
+                    {
+                        if (record is ARecord arecord)
+                        {
+                            answers.Add(new ARecord(originalQuestion.Name, arecord.TimeToLive, arecord.Address));
+                        }
+                    }
+                    else
+                    {
+                        answers.Add(record);
+                    }
+                }
+
+            }
+            else
+            {
+                LogQueryInformation($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
             }
 
-            LogQueryInformation($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
-
-            return false;
+            return answers;
         }
 
 
-        private async Task ForwardTransparentQuery(ushort id, DnsQuestion question, DnsMessage response)
+        private async Task<List<DnsRecordBase>> ForwardQuery(ushort id, DnsQuestion question)
         {
             if (!ForwardUnmatched || UpstreamClient == null)
             {
-                response.ReturnCode = ReturnCode.ServerFailure;
-                return;
+                return [];
             }
+
+            var answers = new List<DnsRecordBase>();
 
 
             var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
@@ -268,66 +296,69 @@ namespace dns_sync.plugins
                     question.RecordClass
                 );
 
-                var success = await ForwardRewrittenQuery(question, rewrittenQuestion, response);
-
-                if (success)
-                {
-                    return;
-                }
-            }
-
-            LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
-
-            var answer = await UpstreamClient.ResolveAsync(question.Name, question.RecordType, question.RecordClass);
-
-            if (answer != null && answer.AnswerRecords.Count > 0)
-            {
-                LogQueryInformation($"Received answer for Query {id}");
-
-                foreach (DnsRecordBase record in answer.AnswerRecords)
-                {
-                    LogQueryInformation($"Query {id}: {record}");
-                    response.AnswerRecords.Add(record);
-                }
-
-
-                response.ReturnCode = answer.ReturnCode;
+                answers = await ForwardRewrittenQuery(id, question, rewrittenQuestion);
             }
             else
             {
-                LogQueryInformation($"Received NO answer for Query {id}");
-                response.ReturnCode = ReturnCode.NxDomain;
+                LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+
+                var answer = await UpstreamClient.ResolveAsync(question.Name, question.RecordType, question.RecordClass);
+
+                if (answer != null && answer.AnswerRecords.Count > 0)
+                {
+                    LogQueryInformation($"Received answer for Query {id}");
+
+                    foreach (DnsRecordBase record in answer.AnswerRecords)
+                    {
+                        LogQueryInformation($"Query {id}: {record}");
+                        answers.Add(record);
+                    }
+                }
+                else
+                {
+                    LogQueryInformation($"Received NO answer for Query {id}");
+                }
             }
+            return answers;
         }
 
-        private async Task ResolveCname(DomainName original, string targetDomain, DnsMessage response)
+        private async Task<List<DnsRecordBase>> ResolveCname(ushort id, DomainName original, string targetDomain)
         {
             var target = DomainName.Parse(targetDomain);
-            response.AnswerRecords.Add(new CNameRecord(original, 0, target));
-
+            var answers = new List<DnsRecordBase>();
+            if (!FlattenCnames)
+            {
+                answers.Add(new CNameRecord(original, 0, target));
+            }
             if (UpstreamClient == null)
             {
-                return;
+                return answers;
             }
-            response.ReturnCode = ReturnCode.NoError;
 
-            var answer = await UpstreamClient.ResolveAsync(target, RecordType.A);
+            var upstreamAnswers = await ForwardQuery(id, new DnsQuestion(DomainName.Parse(targetDomain), RecordType.A, RecordClass.INet));
 
-            if (answer != null)
+
+            if (upstreamAnswers != null && upstreamAnswers.Count > 0)
             {
-                foreach (DnsRecordBase record in answer.AnswerRecords)
+
+                foreach (DnsRecordBase record in upstreamAnswers)
                 {
-                    response.AnswerRecords.Add(record);
+                    Logger.LogInformation(record.ToString());
+                    if (FlattenCnames)
+                    {
+                        if (record is ARecord arecord)
+                        {
+                            answers.Add(new ARecord(original, arecord.TimeToLive, arecord.Address));
+                        }
+                    }
+                    else
+                    {
+                        answers.Add(record);
+                    }
                 }
-                // foreach (DnsRecordBase record in answer.AdditionalRecords)
-                // {
-                //     response.AdditionalRecords.Add(record);
-                // }
             }
-            else
-            {
-                response.ReturnCode = ReturnCode.ServerFailure;
-            }
+
+            return answers;
         }
 
         public override Task ProcessContainersAsync(IList<ContainerRecord> containers)
