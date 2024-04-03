@@ -345,7 +345,6 @@ namespace dns_sync.plugins
 
                 foreach (DnsRecordBase record in upstreamAnswers)
                 {
-                    Logger.LogInformation(record.ToString());
                     if (FlattenCnames)
                     {
                         if (record is ARecord arecord)
@@ -428,6 +427,7 @@ namespace dns_sync.plugins
                             {
                                 if (domain != hostname)
                                 {
+                                    Logger.LogDebug($"Registering CNAME for {container.ContainerName}: Domain: {clasDomain.ToString()}. Response: {container.Hostname}");
                                     tempRecords[clasDomain] = new DnsRecord()
                                     {
                                         Container = container,
