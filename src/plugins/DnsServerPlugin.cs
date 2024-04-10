@@ -42,9 +42,9 @@ namespace dns_sync.plugins
 
         private DnsServer Server { get; set; }
 
-        private ConcurrentDictionary<DomainName, DnsRecord> Records = new();
+        private ConcurrentDictionary<DomainName, List<DnsRecord>> Records = new();
 
-        private Dictionary<string, string> DomainRewritingRules = new();
+        private Dictionary<string, string> DomainRewritingRules = [];
 
         public static string PluginName => "dnsserver";
 
@@ -198,22 +198,24 @@ namespace dns_sync.plugins
             {
                 answers = await ForwardQuery(query.TransactionID, question);
             }
-            else if (Records.TryGetValue(question.Name, out DnsRecord? value))
+            else if (Records.TryGetValue(question.Name, out List<DnsRecord>? values))
             {
-                LogQueryInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
-
-                switch (value.RecordType)
+                foreach (var value in values ?? [])
                 {
-                    case RecordType.CName:
-                        answers = await ResolveCname(query.TransactionID, value.Domain, value.Response);
-                        break;
-                    case RecordType.A:
-                        answers.Add(new ARecord(value.Domain, 60, IPAddress.Parse(value.Response)));
-                        break;
-                    default:
-                        throw new Exception("Unhandled Record Type");
-                }
+                    LogQueryInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
 
+                    switch (value.RecordType)
+                    {
+                        case RecordType.CName:
+                            answers.AddRange(await ResolveCname(query.TransactionID, value.Domain, value.Response));
+                            break;
+                        case RecordType.A:
+                            answers.Add(new ARecord(value.Domain, 60, IPAddress.Parse(value.Response)));
+                            break;
+                        default:
+                            throw new Exception("Unhandled Record Type");
+                    }
+                }
             }
             else if (ForwardUnmatched)
             {
@@ -370,9 +372,8 @@ namespace dns_sync.plugins
 
         private void UpdateRecords(IList<ContainerRecord> recordsToCreate)
         {
-            var tempRecords = new ConcurrentDictionary<DomainName, DnsRecord>();
+            var tempRecords = new ConcurrentDictionary<DomainName, List<DnsRecord>>();
 
-            var duplicateDetection = new Dictionary<string, string>();
             var wwww = recordsToCreate.GroupBy(c => c.Hostname).ToDictionary(c => c.Key, c => c.ToArray());
 
             foreach (var recordsPerHost in wwww)
@@ -403,38 +404,35 @@ namespace dns_sync.plugins
 
                         foreach (var domain in splitDomains)
                         {
-                            if (duplicateDetection.ContainsKey(domain))
-                            {
-                                Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
-                                continue;
-                            }
-
-                            duplicateDetection[domain] = container.ContainerName;
-
                             var clasDomain = DomainName.Parse(domain);
+
+                            if (!tempRecords.ContainsKey(clasDomain))
+                            {
+                                tempRecords[clasDomain] = [];
+                            }
 
                             if (container.UseAddressRecords)
                             {
-                                tempRecords[clasDomain] = new DnsRecord()
+                                tempRecords[clasDomain].Add(new DnsRecord()
                                 {
                                     Container = container,
                                     Domain = clasDomain,
                                     RecordType = RecordType.A,
                                     Response = container.Hostname
-                                };
+                                });
                             }
                             else
                             {
                                 if (domain != hostname)
                                 {
                                     Logger.LogDebug($"Registering CNAME for {container.ContainerName}: Domain: {clasDomain.ToString()}. Response: {container.Hostname}");
-                                    tempRecords[clasDomain] = new DnsRecord()
+                                    tempRecords[clasDomain].Add(new DnsRecord()
                                     {
                                         Container = container,
                                         Domain = clasDomain,
                                         RecordType = RecordType.CName,
                                         Response = container.Hostname
-                                    };
+                                    });
                                 }
                                 else
                                 {
