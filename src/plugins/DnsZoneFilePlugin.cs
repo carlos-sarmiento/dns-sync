@@ -13,6 +13,7 @@ namespace dns_sync.plugins
         public static string PluginName => "dns_zone_file";
 
         private string TargetFile { get; set; }
+        private bool AllowDuplicates { get; set; }
 
         public DnsZoneFilePlugin()
         {
@@ -32,6 +33,9 @@ namespace dns_sync.plugins
             {
                 this.TargetFile = targetFile;
             }
+
+            var allowDuplicates = bool.TryParse(rawConfig.GetValueOrDefault("allow_duplicates", "false").ToString(), out var logQueries);
+            this.AllowDuplicates = allowDuplicates;
 
             System.IO.File.AppendAllText(this.TargetFile, "");
             return Task.CompletedTask;
@@ -69,7 +73,7 @@ namespace dns_sync.plugins
 
                     foreach (var domain in splitDomains)
                     {
-                        if (duplicateDetection.ContainsKey(domain))
+                        if (duplicateDetection.ContainsKey(domain) && !this.AllowDuplicates)
                         {
                             Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
                             continue;
