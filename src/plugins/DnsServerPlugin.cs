@@ -196,6 +196,7 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
+                Logger.LogDebug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
                 answers = await ForwardQuery(query.TransactionID, question);
             }
             else if (Records.TryGetValue(question.Name, out List<DnsRecord>? values))
@@ -219,6 +220,7 @@ namespace dns_sync.plugins
             }
             else if (ForwardUnmatched)
             {
+                Logger.LogDebug($"Forwarding an Unmatched query: {question.Name}");
                 answers = await ForwardQuery(query.TransactionID, question);
             }
 
@@ -235,6 +237,7 @@ namespace dns_sync.plugins
 
         private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion)
         {
+            Logger.LogDebug($"Forwarding Rewritten Query for: {rewrittenQuestion.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
@@ -278,6 +281,7 @@ namespace dns_sync.plugins
 
         private async Task<List<DnsRecordBase>> ForwardQuery(ushort id, DnsQuestion question)
         {
+            Logger.LogDebug($"Forwarding Query for: {question.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
@@ -404,6 +408,7 @@ namespace dns_sync.plugins
 
                         foreach (var domain in splitDomains)
                         {
+                            Logger.LogDebug($"Processing Domain: '{domain}'");
                             var clasDomain = DomainName.Parse(domain);
 
                             if (!tempRecords.ContainsKey(clasDomain))
@@ -413,6 +418,7 @@ namespace dns_sync.plugins
 
                             if (container.UseAddressRecords)
                             {
+                                Logger.LogDebug($"Registering A Record for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
                                 tempRecords[clasDomain].Add(new DnsRecord()
                                 {
                                     Container = container,
@@ -425,7 +431,7 @@ namespace dns_sync.plugins
                             {
                                 if (domain != hostname)
                                 {
-                                    Logger.LogDebug($"Registering CNAME for {container.ContainerName}: Domain: {clasDomain.ToString()}. Response: {container.Hostname}");
+                                    Logger.LogDebug($"Registering CNAME for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
                                     tempRecords[clasDomain].Add(new DnsRecord()
                                     {
                                         Container = container,
