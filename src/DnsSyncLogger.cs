@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Serilog.Events;
 using Serilog.Extensions.Logging;
 using Serilog.Sinks.SystemConsole.Themes;
 using MSILogger = Microsoft.Extensions.Logging.ILogger;
@@ -29,12 +30,18 @@ namespace dns_sync
                                            {
                                                var logger = new LoggerConfiguration()
                                                                .MinimumLevel.Is(LevelConvert.ToSerilogLevel(level))
-                                                               .Enrich.WithProperty("instance_host", Environment.MachineName)
-                                                               .WriteTo.Console(theme: AnsiConsoleTheme.Code, outputTemplate: outputTemplate);
+                                                               .WriteTo.Console(
+                                                                    theme: AnsiConsoleTheme.Code,
+                                                                    outputTemplate: outputTemplate,
+                                                                    restrictedToMinimumLevel: LogEventLevel.Information
+                                                                );
 
                                                if (openObserveSinkConfig != null)
                                                {
-                                                   logger = logger.WriteTo.OpenObserve(
+                                                   logger =
+                                                   logger
+                                                       .Enrich.WithProperty("instance_host", openObserveSinkConfig.InstanceHost)
+                                                       .WriteTo.OpenObserve(
                                                            url: openObserveSinkConfig.Url,
                                                            organization: openObserveSinkConfig.Organization,
                                                            streamName: openObserveSinkConfig.Stream,

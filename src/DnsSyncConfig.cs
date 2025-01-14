@@ -150,12 +150,14 @@ namespace dns_sync
             Stream = "";
             Username = "";
             Password = "";
+            InstanceHost = Environment.MachineName;
         }
         public string Url { get; set; }
         public string Organization { get; set; }
         public string Stream { get; set; }
         public string Username { get; set; }
         public string Password { get; set; }
+        public string InstanceHost { get; set; }
 
         public void ThrowIfConfigIsInvalid()
         {
