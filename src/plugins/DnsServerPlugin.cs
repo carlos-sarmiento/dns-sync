@@ -19,17 +19,20 @@ namespace dns_sync.plugins
             LogQueries = logQueries;
             Logger = logger;
             RequestID = Guid.NewGuid().ToString("N");
+            Name = "";
         }
 
         protected bool LogQueries { get; }
         protected ILogger Logger { get; }
         protected string RequestID { get; }
+        public string Name { get; set; }
 
         public void Debug(string message)
         {
             if (LogQueries)
             {
                 using (LogContext.PushProperty("request_id", RequestID))
+                using (LogContext.PushProperty("domain", Name))
                 {
                     Logger.Debug(message);
                 }
@@ -41,6 +44,7 @@ namespace dns_sync.plugins
             if (LogQueries)
             {
                 using (LogContext.PushProperty("request_id", RequestID))
+                using (LogContext.PushProperty("domain", Name))
                 {
                     Logger.Error(message);
                 }
@@ -51,6 +55,7 @@ namespace dns_sync.plugins
             if (LogQueries)
             {
                 using (LogContext.PushProperty("request_id", RequestID))
+                using (LogContext.PushProperty("domain", Name))
                 {
                     Logger.Warning(message);
                 }
@@ -62,6 +67,7 @@ namespace dns_sync.plugins
             if (LogQueries)
             {
                 using (LogContext.PushProperty("request_id", RequestID))
+                using (LogContext.PushProperty("domain", Name))
                 {
                     Logger.Information(message);
                 }
@@ -228,7 +234,7 @@ namespace dns_sync.plugins
             response.ReturnCode = ReturnCode.NoError;
 
             var question = query.Questions[0];
-
+            queryLogger.Name = question.Name.ToString();
             queryLogger.Information($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
             if (question.RecordType == RecordType.Aaaa)
