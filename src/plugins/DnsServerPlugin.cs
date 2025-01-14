@@ -14,18 +14,20 @@ namespace dns_sync.plugins
 
     public class QueryLogger
     {
-        public QueryLogger(bool logQueries, ILogger logger)
+        public QueryLogger(bool logQueries, ILogger logger, string clientIP)
         {
             LogQueries = logQueries;
             Logger = logger;
             RequestID = Guid.NewGuid().ToString("N");
             Name = "";
+            ClientIP = clientIP;
         }
 
         protected bool LogQueries { get; }
         protected ILogger Logger { get; }
         protected string RequestID { get; }
         public string Name { get; set; }
+        private string ClientIP { get; set; }
 
         public void Debug(string message)
         {
@@ -33,6 +35,7 @@ namespace dns_sync.plugins
             {
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
+                using (LogContext.PushProperty("client_ip", ClientIP))
                 {
                     Logger.Debug(message);
                 }
@@ -45,6 +48,7 @@ namespace dns_sync.plugins
             {
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
+                using (LogContext.PushProperty("client_ip", ClientIP))
                 {
                     Logger.Error(message);
                 }
@@ -56,6 +60,7 @@ namespace dns_sync.plugins
             {
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
+                using (LogContext.PushProperty("client_ip", ClientIP))
                 {
                     Logger.Warning(message);
                 }
@@ -68,6 +73,7 @@ namespace dns_sync.plugins
             {
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
+                using (LogContext.PushProperty("client_ip", ClientIP))
                 {
                     Logger.Information(message);
                 }
@@ -215,12 +221,13 @@ namespace dns_sync.plugins
 
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)
         {
-            var queryLogger = new QueryLogger(LogQueries, QueryLogger);
+            var queryLogger = new QueryLogger(LogQueries, QueryLogger, request.RemoteEndpoint.ToString());
 
             if (request.Query is not DnsMessage query)
             {
                 return;
             }
+
 
             var response = query.CreateResponseInstance();
             request.Response = response;
