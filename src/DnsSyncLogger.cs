@@ -28,20 +28,23 @@ namespace dns_sync
             openObserveSinkConfig = config;
         }
 
-        public static ILogger GetLogger<T>(LogEventLevel? level = null)
+        public static ILogger GetLogger<T>(LogEventLevel? level = null, bool writeToConsole = true)
         {
             string outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss}][{Level:u}][{SourceContext:l}] {Message:lj}{NewLine}{Exception}";
-
 
             var logger = new LoggerConfiguration()
                 .MinimumLevel.Is(level ?? defaultLogLevel)
                 .Enrich.WithProperty("SourceContext", typeof(T).FullName)
-                .Enrich.FromLogContext()
-                .WriteTo.Console(
-                    theme: AnsiConsoleTheme.Code,
-                    outputTemplate: outputTemplate,
-                    restrictedToMinimumLevel: LogEventLevel.Information
-                );
+                .Enrich.FromLogContext();
+
+            if (writeToConsole)
+            {
+                logger = logger.WriteTo.Console(
+                  theme: AnsiConsoleTheme.Code,
+                  outputTemplate: outputTemplate,
+                  restrictedToMinimumLevel: LogEventLevel.Information
+              );
+            }
 
             if (openObserveSinkConfig != null)
             {

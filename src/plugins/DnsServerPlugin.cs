@@ -98,7 +98,10 @@ namespace dns_sync.plugins
         public DnsServerPlugin()
         {
             Server = new DnsServer();
+            QueryLogger = DnsSyncLogger.GetLogger<DnsServerPlugin>(writeToConsole: false);
         }
+
+        private ILogger QueryLogger { get; set; }
 
         private DnsClient? UpstreamClient { get; set; }
 
@@ -212,7 +215,7 @@ namespace dns_sync.plugins
 
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)
         {
-            var queryLogger = new QueryLogger(this.LogQueries, Logger);
+            var queryLogger = new QueryLogger(LogQueries, QueryLogger);
 
             if (request.Query is not DnsMessage query)
             {

@@ -13,9 +13,9 @@ namespace dns_sync.plugins
 
         protected ILogger Logger { get; private set; }
 
-        protected DnsSyncPluginBase()
+        protected DnsSyncPluginBase(ILogger? overrideLogger = null)
         {
-            Logger = defaultLogger;
+            Logger = overrideLogger ?? defaultLogger;
         }
 
         protected Task ConfigureBaseAsync<T>(Dictionary<string, object> rawConfig)
