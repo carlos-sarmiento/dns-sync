@@ -36,6 +36,27 @@ namespace dns_sync.plugins
             }
         }
 
+        public void Error(string message)
+        {
+            if (LogQueries)
+            {
+                using (LogContext.PushProperty("request_id", RequestID))
+                {
+                    Logger.Error(message);
+                }
+            }
+        }
+        public void Warning(string message)
+        {
+            if (LogQueries)
+            {
+                using (LogContext.PushProperty("request_id", RequestID))
+                {
+                    Logger.Warning(message);
+                }
+            }
+        }
+
         public void Information(string message)
         {
             if (LogQueries)
@@ -198,7 +219,7 @@ namespace dns_sync.plugins
 
             if (query.Questions.Count != 1)
             {
-                queryLogger.Debug($"Received Query with more than one question");
+                queryLogger.Error($"Received Query with more than one question");
 
                 response.ReturnCode = ReturnCode.ServerFailure;
                 return;
@@ -220,7 +241,7 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                queryLogger.Debug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
+                queryLogger.Warning($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
                 answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
             else if (Records.TryGetValue(question.Name, out List<DnsRecord>? values))
@@ -244,18 +265,18 @@ namespace dns_sync.plugins
             }
             else if (ForwardUnmatched)
             {
-                queryLogger.Debug($"Forwarding an Unmatched query: {question.Name}");
+                queryLogger.Information($"Forwarding an Unmatched query: {question.Name}");
                 answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
 
             if (answers.Count > 0)
             {
-                queryLogger.Debug($"Forwarding an Unmatched query: {question.Name}");
+                queryLogger.Information($"Forwarding an Unmatched query: {question.Name}");
                 response.AnswerRecords.AddRange(answers);
             }
             else
             {
-                queryLogger.Information($"No record found for '{question.Name}'");
+                queryLogger.Warning($"No record found for '{question.Name}'");
                 response.ReturnCode = ReturnCode.NxDomain;
             }
         }
@@ -297,7 +318,7 @@ namespace dns_sync.plugins
             }
             else
             {
-                queryLogger.Information($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
+                queryLogger.Warning($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
             }
 
             return answers;
@@ -348,7 +369,7 @@ namespace dns_sync.plugins
                 }
                 else
                 {
-                    queryLogger.Information($"Received NO answer for Query {id}");
+                    queryLogger.Warning($"Received NO answer for Query {id}");
                 }
             }
 
@@ -370,10 +391,9 @@ namespace dns_sync.plugins
 
             var upstreamAnswers = await ForwardQuery(id, new DnsQuestion(DomainName.Parse(targetDomain), RecordType.A, RecordClass.INet), queryLogger);
 
-
+            queryLogger.Information("Flattening CNames for Query");
             if (upstreamAnswers != null && upstreamAnswers.Count > 0)
             {
-
                 foreach (DnsRecordBase record in upstreamAnswers)
                 {
                     if (FlattenCnames)
@@ -388,6 +408,10 @@ namespace dns_sync.plugins
                         answers.Add(record);
                     }
                 }
+            }
+            else
+            {
+                queryLogger.Warning($"Received NO answer for Query {id}");
             }
 
             return answers;
