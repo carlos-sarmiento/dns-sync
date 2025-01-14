@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using Microsoft.Extensions.Logging;
+using Serilog.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -16,7 +16,7 @@ namespace dns_sync
 
         public static DnsSyncConfig LoadAndValidate(string path)
         {
-            DnsSyncLogger.LogInformation($"Loading config from: {path}");
+            DnsSyncLogger.Information($"Loading config from: {path}");
 
             try
             {
@@ -28,7 +28,7 @@ namespace dns_sync
 
                 var config = deserializer.Deserialize<DnsSyncConfig>(ymlText);
 
-                DnsSyncLogger.LogInformation($"Correctly Loaded config from: {path}");
+                DnsSyncLogger.Information($"Correctly Loaded config from: {path}");
 
                 config.ThrowIfConfigIsInvalid();
 
@@ -36,7 +36,7 @@ namespace dns_sync
             }
             catch (Exception e)
             {
-                DnsSyncLogger.LogError("There was an error while loading the config", e);
+                DnsSyncLogger.Error("There was an error while loading the config", e);
                 throw;
             }
         }
@@ -77,7 +77,7 @@ namespace dns_sync
 
         public int ScanFrequency { get; set; }
 
-        public LogLevel? LogLevel { get; set; }
+        public LogEventLevel? LogLevel { get; set; }
 
         public IList<DockerHostConfig>? Hosts { get; set; }
 

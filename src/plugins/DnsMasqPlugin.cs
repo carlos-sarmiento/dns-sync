@@ -97,7 +97,7 @@ namespace dns_sync.plugins
 
                         if (string.IsNullOrWhiteSpace(domains))
                         {
-                            Logger.LogError($"{container.ContainerName} has no domains to register on DNS.");
+                            Logger.Error($"{container.ContainerName} has no domains to register on DNS.");
                         }
 
 
@@ -110,7 +110,7 @@ namespace dns_sync.plugins
                         {
                             if (duplicateDetection.ContainsKey(domain))
                             {
-                                Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
+                                Logger.Warning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
                                 continue;
                             }
 
@@ -128,7 +128,7 @@ namespace dns_sync.plugins
                                 }
                                 else
                                 {
-                                    Logger.LogError($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
+                                    Logger.Error($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
                                 }
                             }
                         }
@@ -136,12 +136,12 @@ namespace dns_sync.plugins
                     }
                     else
                     {
-                        Logger.LogDebug($"{container.ContainerName} DNS generation is disabled");
+                        Logger.Debug($"{container.ContainerName} DNS generation is disabled");
                     }
                 }
             }
 
-            Logger.LogDebug("Processing Containers Done");
+            Logger.Debug("Processing Containers Done");
 
             return dnsmasqFile.ToString();
 
@@ -163,7 +163,7 @@ namespace dns_sync.plugins
 
             if (wasDnsmasqFileUpdated && dnsmasqDockerHost != null && dnsmasqContainerName != null)
             {
-                Logger.LogWarning("Reloading DNSMasq Files");
+                Logger.Warning("Reloading DNSMasq Files");
                 await dnsmasqDockerHost.SendSignalToContainer(dnsmasqContainerName, "SIGHUP");
             }
         }
@@ -175,7 +175,7 @@ namespace dns_sync.plugins
 
             if (newDnsmasqContent != previousFile)
             {
-                Logger.LogWarning("DNSMasq File Changed");
+                Logger.Warning("DNSMasq File Changed");
                 previousFile = newDnsmasqContent;
 
                 System.IO.File.WriteAllText(this.TargetFile, newDnsmasqContent);
@@ -183,7 +183,7 @@ namespace dns_sync.plugins
             }
             else
             {
-                Logger.LogDebug("No change to DNSMasq File");
+                Logger.Debug("No change to DNSMasq File");
                 return false;
             }
         }

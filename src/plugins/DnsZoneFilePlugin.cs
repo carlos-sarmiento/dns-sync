@@ -65,7 +65,7 @@ namespace dns_sync.plugins
 
                     if (string.IsNullOrWhiteSpace(domains))
                     {
-                        Logger.LogError($"{container.ContainerName} has no domains to register on DNS.");
+                        Logger.Error($"{container.ContainerName} has no domains to register on DNS.");
                     }
 
                     var description = container.GetLabel("description") ?? domains;
@@ -75,13 +75,13 @@ namespace dns_sync.plugins
                     {
                         if (duplicateDetection.ContainsKey(domain) && !this.AllowDuplicates)
                         {
-                            Logger.LogWarning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
+                            Logger.Warning($"{container.ContainerName} is trying to register '{domain}' which is already owned by Host: '{duplicateDetection[domain]}'");
                             continue;
                         }
 
                         if (domain == container.Hostname)
                         {
-                            Logger.LogError($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
+                            Logger.Error($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
                             continue;
                         }
 
@@ -99,7 +99,7 @@ namespace dns_sync.plugins
                 }
                 else
                 {
-                    Logger.LogDebug($"{container.ContainerName} DNS generation is disabled");
+                    Logger.Debug($"{container.ContainerName} DNS generation is disabled");
                 }
             }
 
@@ -124,7 +124,7 @@ namespace dns_sync.plugins
                 dnsmasqFile.AppendLine("");
             }
 
-            Logger.LogDebug("Processing Containers Done");
+            Logger.Debug("Processing Containers Done");
             return dnsmasqFile.ToString();
         }
 
@@ -134,13 +134,13 @@ namespace dns_sync.plugins
 
             if (content != previousFile)
             {
-                Logger.LogWarning("DNS Zone File Changed");
+                Logger.Warning("DNS Zone File Changed");
                 previousFile = content;
                 System.IO.File.WriteAllText(this.TargetFile, content);
             }
             else
             {
-                Logger.LogDebug("No change to DNS Zone File");
+                Logger.Debug("No change to DNS Zone File");
             }
         }
 

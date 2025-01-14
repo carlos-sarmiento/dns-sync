@@ -2,14 +2,42 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using ARSoft.Tools.Net.Dns;
 using System.Net;
 using ARSoft.Tools.Net;
+using Serilog;
 
 namespace dns_sync.plugins
 {
+
+    public class QueryLogger
+    {
+        public QueryLogger(bool logQueries, ILogger logger)
+        {
+            LogQueries = logQueries;
+            Logger = logger.ForContext("request_id", Guid.NewGuid().ToString());
+        }
+
+        public bool LogQueries { get; }
+        protected ILogger Logger { get; }
+
+        public void Debug(string message)
+        {
+            if (LogQueries)
+            {
+                Logger.Debug(message);
+            }
+        }
+
+        public void Information(string message)
+        {
+            if (LogQueries)
+            {
+                Logger.Information(message);
+            }
+        }
+    }
 
     public class DnsServerPlugin : DnsSyncPluginBase
     {
@@ -81,7 +109,7 @@ namespace dns_sync.plugins
             }
             else if (upstreamServer != null)
             {
-                Logger.LogInformation($"Setting Upstream DNS Server for DNS-Server Plugin: '{rawUpstreamServerIp}:{upstreamPortNumber}'");
+                Logger.Information($"Setting Upstream DNS Server for DNS-Server Plugin: '{rawUpstreamServerIp}:{upstreamPortNumber}'");
 
                 UpstreamClient = new DnsClient(
                                            new[] { upstreamServer },
@@ -138,31 +166,19 @@ namespace dns_sync.plugins
             Server = new DnsServer(new UdpServerTransport(new IPEndPoint(IPAddress.Any, portNumber), 5000),
                 new TcpServerTransport(new IPEndPoint(IPAddress.Any, portNumber), 5000, 120000));
             Server.QueryReceived += OnQueryReceived;
-            Logger.LogInformation($"Starting DNS Server on Port: '{portNumber}'");
+            Logger.Information($"Starting DNS Server on Port: '{portNumber}'");
 
             Server.Start();
 
             return Task.CompletedTask;
         }
 
-        private void LogQueryDebug(string message)
-        {
-            if (LogQueries)
-            {
-                Logger.LogDebug(message);
-            }
-        }
 
-        private void LogQueryInformation(string message)
-        {
-            if (LogQueries)
-            {
-                Logger.LogInformation(message);
-            }
-        }
 
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)
         {
+            var queryLogger = new QueryLogger(this.LogQueries, Logger);
+
             if (request.Query is not DnsMessage query)
             {
                 return;
@@ -174,7 +190,7 @@ namespace dns_sync.plugins
 
             if (query.Questions.Count != 1)
             {
-                LogQueryDebug($"Received Query with more than one question");
+                queryLogger.Debug($"Received Query with more than one question");
 
                 response.ReturnCode = ReturnCode.ServerFailure;
                 return;
@@ -184,7 +200,7 @@ namespace dns_sync.plugins
 
             var question = query.Questions[0];
 
-            LogQueryInformation($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+            queryLogger.Information($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
             if (question.RecordType == RecordType.Aaaa)
             {
@@ -196,19 +212,19 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                Logger.LogDebug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
-                answers = await ForwardQuery(query.TransactionID, question);
+                Logger.Debug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
+                answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
             else if (Records.TryGetValue(question.Name, out List<DnsRecord>? values))
             {
                 foreach (var value in values ?? [])
                 {
-                    LogQueryInformation($"Replying on Query with Response {value.Response} from server: {value.Container}");
+                    queryLogger.Information($"Replying on Query with Response {value.Response} from server: {value.Container}");
 
                     switch (value.RecordType)
                     {
                         case RecordType.CName:
-                            answers.AddRange(await ResolveCname(query.TransactionID, value.Domain, value.Response));
+                            answers.AddRange(await ResolveCname(query.TransactionID, value.Domain, value.Response, queryLogger));
                             break;
                         case RecordType.A:
                             answers.Add(new ARecord(value.Domain, 60, IPAddress.Parse(value.Response)));
@@ -220,32 +236,33 @@ namespace dns_sync.plugins
             }
             else if (ForwardUnmatched)
             {
-                Logger.LogDebug($"Forwarding an Unmatched query: {question.Name}");
-                answers = await ForwardQuery(query.TransactionID, question);
+                Logger.Debug($"Forwarding an Unmatched query: {question.Name}");
+                answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
 
             if (answers.Count > 0)
             {
+                Logger.Debug($"Forwarding an Unmatched query: {question.Name}");
                 response.AnswerRecords.AddRange(answers);
             }
             else
             {
-                LogQueryInformation($"No record found for '{question.Name}'");
+                queryLogger.Information($"No record found for '{question.Name}'");
                 response.ReturnCode = ReturnCode.NxDomain;
             }
         }
 
-        private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion)
+        private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion, QueryLogger queryLogger)
         {
-            Logger.LogDebug($"Forwarding Rewritten Query for: {rewrittenQuestion.Name}");
+            Logger.Debug($"Forwarding Rewritten Query for: {rewrittenQuestion.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
             }
 
-            LogQueryInformation($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
+            queryLogger.Information($"Forwarding Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
 
-            var forwardAnswers = await ForwardQuery(id, rewrittenQuestion);
+            var forwardAnswers = await ForwardQuery(id, rewrittenQuestion, queryLogger);
             var answers = new List<DnsRecordBase>();
             if (forwardAnswers.Count > 0)
             {
@@ -272,16 +289,16 @@ namespace dns_sync.plugins
             }
             else
             {
-                LogQueryInformation($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
+                queryLogger.Information($"No information found for Rewritten Query for RecordType {Enum.GetName(typeof(RecordType), rewrittenQuestion.RecordType)} on {rewrittenQuestion.Name}");
             }
 
             return answers;
         }
 
 
-        private async Task<List<DnsRecordBase>> ForwardQuery(ushort id, DnsQuestion question)
+        private async Task<List<DnsRecordBase>> ForwardQuery(ushort id, DnsQuestion question, QueryLogger queryLogger)
         {
-            Logger.LogDebug($"Forwarding Query for: {question.Name}");
+            Logger.Debug($"Forwarding Query for: {question.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
@@ -293,7 +310,7 @@ namespace dns_sync.plugins
             var domainToRewrite = DomainRewritingRules.Keys.FirstOrDefault(x => question.Name.IsEqualOrSubDomainOf(DomainName.Parse(x)));
             if (domainToRewrite != null)
             {
-                LogQueryInformation($"Rewritting Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+                queryLogger.Information($"Rewritting Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
                 var targetDomain = DomainRewritingRules[domainToRewrite];
                 var rewrittenQuestion = new DnsQuestion(
@@ -302,35 +319,35 @@ namespace dns_sync.plugins
                     question.RecordClass
                 );
 
-                answers = await ForwardRewrittenQuery(id, question, rewrittenQuestion);
+                answers = await ForwardRewrittenQuery(id, question, rewrittenQuestion, queryLogger);
             }
 
             if (answers.Count == 0)
             {
-                LogQueryInformation($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+                queryLogger.Information($"Forwarding Query {id} for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
 
                 var answer = await UpstreamClient.ResolveAsync(question.Name, question.RecordType, question.RecordClass);
 
                 if (answer != null && answer.AnswerRecords.Count > 0)
                 {
-                    LogQueryInformation($"Received answer for Query {id}");
+                    queryLogger.Information($"Received answer for Query {id}");
 
                     foreach (DnsRecordBase record in answer.AnswerRecords)
                     {
-                        LogQueryInformation($"Query {id}: {record}");
+                        queryLogger.Information($"Query {id}: {record}");
                         answers.Add(record);
                     }
                 }
                 else
                 {
-                    LogQueryInformation($"Received NO answer for Query {id}");
+                    queryLogger.Information($"Received NO answer for Query {id}");
                 }
             }
 
             return answers;
         }
 
-        private async Task<List<DnsRecordBase>> ResolveCname(ushort id, DomainName original, string targetDomain)
+        private async Task<List<DnsRecordBase>> ResolveCname(ushort id, DomainName original, string targetDomain, QueryLogger queryLogger)
         {
             var target = DomainName.Parse(targetDomain);
             var answers = new List<DnsRecordBase>();
@@ -343,7 +360,7 @@ namespace dns_sync.plugins
                 return answers;
             }
 
-            var upstreamAnswers = await ForwardQuery(id, new DnsQuestion(DomainName.Parse(targetDomain), RecordType.A, RecordClass.INet));
+            var upstreamAnswers = await ForwardQuery(id, new DnsQuestion(DomainName.Parse(targetDomain), RecordType.A, RecordClass.INet), queryLogger);
 
 
             if (upstreamAnswers != null && upstreamAnswers.Count > 0)
@@ -399,7 +416,7 @@ namespace dns_sync.plugins
 
                         if (string.IsNullOrWhiteSpace(domains))
                         {
-                            Logger.LogError($"{container.ContainerName} has no domains to register on DNS.");
+                            Logger.Error($"{container.ContainerName} has no domains to register on DNS.");
                         }
 
 
@@ -408,7 +425,7 @@ namespace dns_sync.plugins
 
                         foreach (var domain in splitDomains)
                         {
-                            Logger.LogDebug($"Processing Domain: '{domain}'");
+                            Logger.Debug($"Processing Domain: '{domain}'");
                             var clasDomain = DomainName.Parse(domain);
 
                             if (!tempRecords.ContainsKey(clasDomain))
@@ -418,7 +435,7 @@ namespace dns_sync.plugins
 
                             if (container.UseAddressRecords)
                             {
-                                Logger.LogDebug($"Registering A Record for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
+                                Logger.Debug($"Registering A Record for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
                                 tempRecords[clasDomain].Add(new DnsRecord()
                                 {
                                     Container = container,
@@ -431,7 +448,7 @@ namespace dns_sync.plugins
                             {
                                 if (domain != hostname)
                                 {
-                                    Logger.LogDebug($"Registering CNAME for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
+                                    Logger.Debug($"Registering CNAME for '{container.ContainerName}' Domain: '{clasDomain.ToString()}' Response: '{container.Hostname}'");
                                     tempRecords[clasDomain].Add(new DnsRecord()
                                     {
                                         Container = container,
@@ -442,21 +459,21 @@ namespace dns_sync.plugins
                                 }
                                 else
                                 {
-                                    Logger.LogError($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
+                                    Logger.Error($"Invalid CNAME config for container {container.ContainerName}. Domain and hostname are the same: {domain}");
                                 }
                             }
                         }
                     }
                     else
                     {
-                        Logger.LogDebug($"{container.ContainerName} DNS generation is disabled");
+                        Logger.Debug($"{container.ContainerName} DNS generation is disabled");
                     }
                 }
             }
 
             Records = tempRecords;
 
-            Logger.LogDebug("Processing Containers Done");
+            Logger.Debug("Processing Containers Done");
         }
     }
 }

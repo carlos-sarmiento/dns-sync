@@ -95,7 +95,7 @@ namespace dns_sync.plugins
 
                 if (string.IsNullOrWhiteSpace(url))
                 {
-                    Logger.LogError($"Container: {container.ContainerName} on {container.Hostname} has no valid url value.");
+                    Logger.Error($"Container: {container.ContainerName} on {container.Hostname} has no valid url value.");
                     continue;
                 }
 
@@ -185,7 +185,7 @@ namespace dns_sync.plugins
 
             if (newContent != previousFile)
             {
-                Logger.LogInformation("Homer File Updated");
+                Logger.Information("Homer File Updated");
                 previousFile = newContent;
 
                 System.IO.File.WriteAllText(targetFile, newContent);
@@ -193,7 +193,7 @@ namespace dns_sync.plugins
             }
             else
             {
-                Logger.LogDebug("No change to Homer File");
+                Logger.Debug("No change to Homer File");
                 return false;
             }
         }

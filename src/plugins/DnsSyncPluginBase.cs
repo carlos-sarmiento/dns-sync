@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 
 namespace dns_sync.plugins
 {
@@ -19,8 +20,8 @@ namespace dns_sync.plugins
 
         protected Task ConfigureBaseAsync<T>(Dictionary<string, object> rawConfig)
         {
-            LogLevel? logLevel = null;
-            if (Enum.TryParse<LogLevel>(rawConfig.GetValueOrDefault("log_level") as string, true, out var parsedLogLevel))
+            LogEventLevel? logLevel = null;
+            if (Enum.TryParse<LogEventLevel>(rawConfig.GetValueOrDefault("log_level") as string, true, out var parsedLogLevel))
             {
                 logLevel = parsedLogLevel;
             }
@@ -28,7 +29,7 @@ namespace dns_sync.plugins
 
             if (logLevel != null)
             {
-                Logger.LogWarning($"Log Level for plugin `{GetPluginName()}` set to: {logLevel}");
+                Logger.Warning($"Log Level for plugin `{GetPluginName()}` set to: {logLevel}");
             }
 
             return Task.CompletedTask;

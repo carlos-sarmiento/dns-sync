@@ -1,19 +1,14 @@
 using System;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
-using Serilog.Extensions.Logging;
 using Serilog.Sinks.SystemConsole.Themes;
-using MSILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace dns_sync
 {
-
     public static class DnsSyncLogger
     {
-
-        private static LogLevel defaultLogLevel = LogLevel.Debug;
-        private static MSILogger defaultLogger;
+        private static LogEventLevel defaultLogLevel = LogEventLevel.Debug;
+        private static ILogger defaultLogger;
 
         private static OpenObserveConfig? openObserveSinkConfig;
 
@@ -22,43 +17,7 @@ namespace dns_sync
             defaultLogger = GetLogger<Program>();
         }
 
-        private static ILoggerFactory GetLoggerFactoryForLevel(LogLevel level)
-        {
-            string outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss}][{Level:u}][{SourceContext:l}] {Message:lj}{NewLine}{Exception}";
-
-            return LoggerFactory.Create(builder =>
-                                           {
-                                               var logger = new LoggerConfiguration()
-                                                               .MinimumLevel.Is(LevelConvert.ToSerilogLevel(level))
-                                                               .WriteTo.Console(
-                                                                    theme: AnsiConsoleTheme.Code,
-                                                                    outputTemplate: outputTemplate,
-                                                                    restrictedToMinimumLevel: LogEventLevel.Information
-                                                                );
-
-                                               if (openObserveSinkConfig != null)
-                                               {
-                                                   logger =
-                                                   logger
-                                                       .Enrich.WithProperty("instance_host", openObserveSinkConfig.InstanceHost)
-                                                       .WriteTo.OpenObserve(
-                                                           url: openObserveSinkConfig.Url,
-                                                           organization: openObserveSinkConfig.Organization,
-                                                           streamName: openObserveSinkConfig.Stream,
-                                                           login: openObserveSinkConfig.Username,
-                                                           key: openObserveSinkConfig.Password
-                                                       );
-                                               }
-
-                                               builder.SetMinimumLevel(level)
-                                                   .AddSerilog(
-                                                           logger.CreateLogger(),
-                                                           true
-                                                   );
-                                           });
-        }
-
-        public static void SetDefaultLogLevel(LogLevel level)
+        public static void SetDefaultLogLevel(LogEventLevel level)
         {
             defaultLogLevel = level;
             defaultLogger = GetLogger<Program>(level);
@@ -69,39 +28,66 @@ namespace dns_sync
             openObserveSinkConfig = config;
         }
 
-        public static MSILogger GetLogger<T>(LogLevel? level = null)
+        public static ILogger GetLogger<T>(LogEventLevel? level = null)
         {
-            return GetLoggerFactoryForLevel(level ?? defaultLogLevel).CreateLogger<T>();
+            string outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss}][{Level:u}][{SourceContext:l}] {Message:lj}{NewLine}{Exception}";
+
+
+            var logger = new LoggerConfiguration()
+                .MinimumLevel.Is(level ?? defaultLogLevel)
+                .Enrich.WithProperty("SourceContext", typeof(T).FullName)
+
+                .WriteTo.Console(
+                    theme: AnsiConsoleTheme.Code,
+                    outputTemplate: outputTemplate,
+                    restrictedToMinimumLevel: LogEventLevel.Information
+                );
+
+            if (openObserveSinkConfig != null)
+            {
+                logger =
+                logger
+                    .Enrich.WithProperty("instance_host", openObserveSinkConfig.InstanceHost)
+                    .WriteTo.OpenObserve(
+                        url: openObserveSinkConfig.Url,
+                        organization: openObserveSinkConfig.Organization,
+                        streamName: openObserveSinkConfig.Stream,
+                        login: openObserveSinkConfig.Username,
+                        key: openObserveSinkConfig.Password
+                    );
+            }
+
+            return logger.CreateLogger();
         }
 
-        public static void LogCritical(string message, Exception? exception = null, params object?[] args)
+        public static void Critical(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogCritical(exception, message, args);
+            defaultLogger.Fatal(exception, message, args);
         }
 
-        public static void LogDebug(string message, Exception? exception = null, params object?[] args)
+        public static void Debug(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogDebug(exception, message, args);
+            defaultLogger.Debug(exception, message, args);
         }
 
-        public static void LogError(string message, Exception? exception = null, params object?[] args)
+        public static void Error(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogError(exception, message, args);
+            defaultLogger.Error(exception, message, args);
         }
 
-        public static void LogInformation(string message, Exception? exception = null, params object?[] args)
+        public static void Information(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogInformation(exception, message, args);
+            defaultLogger.Information(exception, message, args);
         }
 
-        public static void LogTrace(string message, Exception? exception = null, params object?[] args)
+        public static void Trace(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogTrace(exception, message, args);
+            defaultLogger.Verbose(exception, message, args);
         }
 
-        public static void LogWarning(string message, Exception? exception = null, params object?[] args)
+        public static void Warning(string message, Exception? exception = null, params object?[] args)
         {
-            defaultLogger.LogWarning(exception, message, args);
+            defaultLogger.Warning(exception, message, args);
         }
     }
 }

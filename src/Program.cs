@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Docker.DotNet.X509;
 using Microsoft.Extensions.Logging;
 using dns_sync.plugins;
+using Serilog.Events;
 
 namespace dns_sync
 {
@@ -19,7 +20,7 @@ namespace dns_sync
         {
             AppDomain.CurrentDomain.ProcessExit += (object? sender, EventArgs e) =>
                   {
-                      DnsSyncLogger.LogInformation("Shutting Down");
+                      DnsSyncLogger.Information("Shutting Down");
                       SigtermCalled = true;
                   };
 
@@ -29,7 +30,7 @@ namespace dns_sync
             }
             catch (Exception e)
             {
-                DnsSyncLogger.LogCritical("Unhandled Exception", e);
+                DnsSyncLogger.Critical("Unhandled Exception", e);
             }
         }
 
@@ -38,7 +39,7 @@ namespace dns_sync
             CertificateCredentials? credentials = null;
             if (config.Auth?.MutualTls != null)
             {
-                DnsSyncLogger.LogInformation("Creating TLS Client Auth Credentials");
+                DnsSyncLogger.Information("Creating TLS Client Auth Credentials");
                 var cert = new X509Certificate2(
                              config.Auth.MutualTls.PfxFile,
                              config.Auth.MutualTls.Password);
@@ -56,12 +57,12 @@ namespace dns_sync
 
         static async Task Exec(string[] args)
         {
-            DnsSyncLogger.LogInformation("Starting Up");
+            DnsSyncLogger.Information("Starting Up");
 
             var configFileLocation = args.Any() ? args[0] : "/config/config.yml";
             var config = DnsSyncConfig.LoadAndValidate(configFileLocation);
 
-            DnsSyncLogger.SetDefaultLogLevel(config.LogLevel ?? LogLevel.Debug);
+            DnsSyncLogger.SetDefaultLogLevel(config.LogLevel ?? LogEventLevel.Debug);
             DnsSyncLogger.SetOpenObserveSinkConfig(config.OpenObserve);
 
             var credentials = BuildAuthCredentials(config);
@@ -75,18 +76,18 @@ namespace dns_sync
 
                 foreach (var plugin in plugins)
                 {
-                    DnsSyncLogger.LogDebug($"Running Plugin: {plugin.GetPluginName()}");
+                    DnsSyncLogger.Debug($"Running Plugin: {plugin.GetPluginName()}");
                     try
                     {
                         await plugin.ProcessContainersAsync(containers);
                     }
                     catch (Exception e)
                     {
-                        DnsSyncLogger.LogError($"Error throw when processing plugin: {plugin.GetPluginName()}", e);
+                        DnsSyncLogger.Error($"Error throw when processing plugin: {plugin.GetPluginName()}", e);
                     }
                 }
 
-                DnsSyncLogger.LogDebug($"Waiting for {config.ScanFrequency} seconds");
+                DnsSyncLogger.Debug($"Waiting for {config.ScanFrequency} seconds");
                 await Task.Delay(TimeSpan.FromSeconds(config.ScanFrequency));
             }
         }
@@ -124,7 +125,7 @@ namespace dns_sync
                 }
                 catch (Exception e)
                 {
-                    DnsSyncLogger.LogError($"Error while configuring plugin: {pluginName}: {e.Message}", e);
+                    DnsSyncLogger.Error($"Error while configuring plugin: {pluginName}: {e.Message}", e);
                 }
             }
 
@@ -133,7 +134,7 @@ namespace dns_sync
 
         private static async Task<ContainerRecord[]> GenerateContainers(IList<DockerHost> hostsToMonitor)
         {
-            DnsSyncLogger.LogInformation("Updating From All Servers");
+            DnsSyncLogger.Information("Updating From All Servers");
 
             var recordsToCreate = (await Task.WhenAll(
                                         hostsToMonitor.Select(
@@ -141,20 +142,20 @@ namespace dns_sync
                                             {
                                                 try
                                                 {
-                                                    DnsSyncLogger.LogDebug($"Fetching Host: {host.ConnectionUri}");
+                                                    DnsSyncLogger.Debug($"Fetching Host: {host.ConnectionUri}");
                                                     var containersToAlias = await host.GetContainersToAlias();
 
                                                     foreach (var c in containersToAlias)
                                                     {
-                                                        DnsSyncLogger.LogDebug($"Found container: {c.ContainerName} - Is Active for DNS-Sync: {c.IsActiveForDnsSync}");
+                                                        DnsSyncLogger.Debug($"Found container: {c.ContainerName} - Is Active for DNS-Sync: {c.IsActiveForDnsSync}");
                                                     }
 
                                                     return containersToAlias;
                                                 }
                                                 catch (Exception e)
                                                 {
-                                                    DnsSyncLogger.LogError($"Error while fetching containers from {host.ConnectionUri}");
-                                                    DnsSyncLogger.LogDebug(e.ToString());
+                                                    DnsSyncLogger.Error($"Error while fetching containers from {host.ConnectionUri}");
+                                                    DnsSyncLogger.Debug(e.ToString());
 
                                                     return new List<ContainerRecord>();
                                                 }
@@ -163,7 +164,7 @@ namespace dns_sync
                                     )
                                 );
 
-            DnsSyncLogger.LogInformation("Update Completed");
+            DnsSyncLogger.Information("Update Completed");
 
             return recordsToCreate.SelectMany(t => t).ToArray() ?? new ContainerRecord[0];
         }
