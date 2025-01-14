@@ -7,6 +7,7 @@ using ARSoft.Tools.Net.Dns;
 using System.Net;
 using ARSoft.Tools.Net;
 using Serilog;
+using Serilog.Context;
 
 namespace dns_sync.plugins
 {
@@ -16,17 +17,22 @@ namespace dns_sync.plugins
         public QueryLogger(bool logQueries, ILogger logger)
         {
             LogQueries = logQueries;
-            Logger = logger.ForContext("request_id", Guid.NewGuid().ToString());
+            Logger = logger;
+            RequestID = Guid.NewGuid().ToString("N");
         }
 
-        public bool LogQueries { get; }
+        protected bool LogQueries { get; }
         protected ILogger Logger { get; }
+        protected string RequestID { get; }
 
         public void Debug(string message)
         {
             if (LogQueries)
             {
-                Logger.Debug(message);
+                using (LogContext.PushProperty("request_id", RequestID))
+                {
+                    Logger.Debug(message);
+                }
             }
         }
 
@@ -34,7 +40,10 @@ namespace dns_sync.plugins
         {
             if (LogQueries)
             {
-                Logger.Information(message);
+                using (LogContext.PushProperty("request_id", RequestID))
+                {
+                    Logger.Information(message);
+                }
             }
         }
     }
@@ -172,7 +181,6 @@ namespace dns_sync.plugins
 
             return Task.CompletedTask;
         }
-
 
 
         private async Task OnQueryReceived(object sender, QueryReceivedEventArgs request)

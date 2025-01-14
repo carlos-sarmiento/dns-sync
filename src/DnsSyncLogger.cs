@@ -36,7 +36,7 @@ namespace dns_sync
             var logger = new LoggerConfiguration()
                 .MinimumLevel.Is(level ?? defaultLogLevel)
                 .Enrich.WithProperty("SourceContext", typeof(T).FullName)
-
+                .Enrich.FromLogContext()
                 .WriteTo.Console(
                     theme: AnsiConsoleTheme.Code,
                     outputTemplate: outputTemplate,
