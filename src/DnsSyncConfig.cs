@@ -43,11 +43,11 @@ namespace dns_sync
 
         public void ThrowIfConfigIsInvalid()
         {
-            if (this.Hosts == null)
+            if (Hosts == null)
             {
                 throw new Exception("Config is missing 'hosts' section");
             }
-            if (this.Hosts.Count == 0)
+            if (Hosts.Count == 0)
             {
                 throw new Exception("Config does not include any hosts");
             }
@@ -57,10 +57,9 @@ namespace dns_sync
                 h.ThrowIfConfigIsInvalid();
             }
 
-            if (this.Auth != null)
-            {
-                this.Auth.ThrowIfConfigIsInvalid();
-            }
+            Auth?.ThrowIfConfigIsInvalid();
+
+            OpenObserve?.ThrowIfConfigIsInvalid();
 
             if (ScanFrequency <= 0)
             {
@@ -85,6 +84,8 @@ namespace dns_sync
         public DockerAuth? Auth { get; set; }
 
         public Dictionary<string, Dictionary<string, object>> Plugins { get; set; }
+
+        public OpenObserveConfig? OpenObserve { get; set; }
     }
 
     public class DockerHostConfig
@@ -137,6 +138,51 @@ namespace dns_sync
             }
 
 
+        }
+    }
+
+    public class OpenObserveConfig
+    {
+        public OpenObserveConfig()
+        {
+            Url = "";
+            Organization = "default";
+            Stream = "";
+            Username = "";
+            Password = "";
+        }
+        public string Url { get; set; }
+        public string Organization { get; set; }
+        public string Stream { get; set; }
+        public string Username { get; set; }
+        public string Password { get; set; }
+
+        public void ThrowIfConfigIsInvalid()
+        {
+            if (string.IsNullOrWhiteSpace(this.Url))
+            {
+                throw new Exception($"Invalid URL provided for open observe: {this.Url}");
+            }
+
+            if (string.IsNullOrWhiteSpace(this.Organization))
+            {
+                throw new Exception($"Open Observe Organization is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(this.Stream))
+            {
+                throw new Exception($"Open Observe Stream is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(this.Username))
+            {
+                throw new Exception($"Open Observe Username is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(this.Password))
+            {
+                throw new Exception($"Open Observe Password is required");
+            }
         }
     }
 

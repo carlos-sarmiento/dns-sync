@@ -1,13 +1,20 @@
 using System;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Extensions.Logging;
+using Serilog.Sinks.SystemConsole.Themes;
+using MSILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace dns_sync
 {
+
     public static class DnsSyncLogger
     {
 
         private static LogLevel defaultLogLevel = LogLevel.Debug;
-        private static ILogger defaultLogger;
+        private static MSILogger defaultLogger;
+
+        private static OpenObserveConfig? openObserveSinkConfig;
 
         static DnsSyncLogger()
         {
@@ -16,16 +23,31 @@ namespace dns_sync
 
         private static ILoggerFactory GetLoggerFactoryForLevel(LogLevel level)
         {
+            string outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss}][{Level:u}][{SourceContext:l}] {Message:lj}{NewLine}{Exception}";
+
             return LoggerFactory.Create(builder =>
                                            {
-                                               builder
-                                                   .SetMinimumLevel(level)
-                                                   .AddSimpleConsole(options =>
-                                                   {
-                                                       options.IncludeScopes = false;
-                                                       options.SingleLine = true;
-                                                       options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
-                                                   });
+                                               var logger = new LoggerConfiguration()
+                                                               .MinimumLevel.Is(LevelConvert.ToSerilogLevel(level))
+                                                               .Enrich.WithProperty("instance_host", Environment.MachineName)
+                                                               .WriteTo.Console(theme: AnsiConsoleTheme.Code, outputTemplate: outputTemplate);
+
+                                               if (openObserveSinkConfig != null)
+                                               {
+                                                   logger = logger.WriteTo.OpenObserve(
+                                                           url: openObserveSinkConfig.Url,
+                                                           organization: openObserveSinkConfig.Organization,
+                                                           streamName: openObserveSinkConfig.Stream,
+                                                           login: openObserveSinkConfig.Username,
+                                                           key: openObserveSinkConfig.Password
+                                                       );
+                                               }
+
+                                               builder.SetMinimumLevel(level)
+                                                   .AddSerilog(
+                                                           logger.CreateLogger(),
+                                                           true
+                                                   );
                                            });
         }
 
@@ -35,7 +57,12 @@ namespace dns_sync
             defaultLogger = GetLogger<Program>(level);
         }
 
-        public static ILogger GetLogger<T>(LogLevel? level = null)
+        public static void SetOpenObserveSinkConfig(OpenObserveConfig? config)
+        {
+            openObserveSinkConfig = config;
+        }
+
+        public static MSILogger GetLogger<T>(LogLevel? level = null)
         {
             return GetLoggerFactoryForLevel(level ?? defaultLogLevel).CreateLogger<T>();
         }

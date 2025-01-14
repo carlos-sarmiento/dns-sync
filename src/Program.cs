@@ -62,6 +62,7 @@ namespace dns_sync
             var config = DnsSyncConfig.LoadAndValidate(configFileLocation);
 
             DnsSyncLogger.SetDefaultLogLevel(config.LogLevel ?? LogLevel.Debug);
+            DnsSyncLogger.SetOpenObserveSinkConfig(config.OpenObserve);
 
             var credentials = BuildAuthCredentials(config);
             var hostsToMonitor = BuildHostListAsync(config, credentials);
