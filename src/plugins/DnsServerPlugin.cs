@@ -220,7 +220,7 @@ namespace dns_sync.plugins
 
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
-                Logger.Debug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
+                queryLogger.Debug($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
                 answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
             else if (Records.TryGetValue(question.Name, out List<DnsRecord>? values))
@@ -244,13 +244,13 @@ namespace dns_sync.plugins
             }
             else if (ForwardUnmatched)
             {
-                Logger.Debug($"Forwarding an Unmatched query: {question.Name}");
+                queryLogger.Debug($"Forwarding an Unmatched query: {question.Name}");
                 answers = await ForwardQuery(query.TransactionID, question, queryLogger);
             }
 
             if (answers.Count > 0)
             {
-                Logger.Debug($"Forwarding an Unmatched query: {question.Name}");
+                queryLogger.Debug($"Forwarding an Unmatched query: {question.Name}");
                 response.AnswerRecords.AddRange(answers);
             }
             else
@@ -262,7 +262,7 @@ namespace dns_sync.plugins
 
         private async Task<List<DnsRecordBase>> ForwardRewrittenQuery(ushort id, DnsQuestion originalQuestion, DnsQuestion rewrittenQuestion, QueryLogger queryLogger)
         {
-            Logger.Debug($"Forwarding Rewritten Query for: {rewrittenQuestion.Name}");
+            queryLogger.Debug($"Forwarding Rewritten Query for: {rewrittenQuestion.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
@@ -306,7 +306,7 @@ namespace dns_sync.plugins
 
         private async Task<List<DnsRecordBase>> ForwardQuery(ushort id, DnsQuestion question, QueryLogger queryLogger)
         {
-            Logger.Debug($"Forwarding Query for: {question.Name}");
+            queryLogger.Debug($"Forwarding Query for: {question.Name}");
             if (!ForwardUnmatched || UpstreamClient == null)
             {
                 return [];
