@@ -21,6 +21,7 @@ namespace dns_sync.plugins
             RequestID = Guid.NewGuid().ToString("N");
             Name = "";
             ClientIP = clientIP;
+            RecordType = "";
         }
 
         protected bool LogQueries { get; }
@@ -28,6 +29,7 @@ namespace dns_sync.plugins
         protected string RequestID { get; }
         public string Name { get; set; }
         private string ClientIP { get; set; }
+        public string RecordType { get; set; }
 
         public void Debug(string message)
         {
@@ -36,6 +38,7 @@ namespace dns_sync.plugins
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
                 using (LogContext.PushProperty("client_ip", ClientIP))
+                using (LogContext.PushProperty("record_type", RecordType))
                 {
                     Logger.Debug(message);
                 }
@@ -49,6 +52,7 @@ namespace dns_sync.plugins
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
                 using (LogContext.PushProperty("client_ip", ClientIP))
+                using (LogContext.PushProperty("record_type", RecordType))
                 {
                     Logger.Error(message);
                 }
@@ -61,6 +65,7 @@ namespace dns_sync.plugins
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
                 using (LogContext.PushProperty("client_ip", ClientIP))
+                using (LogContext.PushProperty("record_type", RecordType))
                 {
                     Logger.Warning(message);
                 }
@@ -74,6 +79,7 @@ namespace dns_sync.plugins
                 using (LogContext.PushProperty("request_id", RequestID))
                 using (LogContext.PushProperty("domain", Name))
                 using (LogContext.PushProperty("client_ip", ClientIP))
+                using (LogContext.PushProperty("record_type", RecordType))
                 {
                     Logger.Information(message);
                 }
@@ -244,8 +250,10 @@ namespace dns_sync.plugins
             response.ReturnCode = ReturnCode.NoError;
 
             var question = query.Questions[0];
+            var recordType = Enum.GetName(typeof(RecordType), question.RecordType);
             queryLogger.Name = question.Name.ToString();
-            queryLogger.Information($"Received Query for RecordType {Enum.GetName(typeof(RecordType), question.RecordType)} on {question.Name}");
+            queryLogger.RecordType = recordType ?? "";
+            queryLogger.Information($"Received Query for RecordType {recordType} on {question.Name}");
 
             if (question.RecordType == RecordType.Aaaa)
             {
