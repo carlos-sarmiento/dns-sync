@@ -263,6 +263,14 @@ namespace dns_sync.plugins
 
             var answers = new List<DnsRecordBase>();
 
+            if (question.RecordType == RecordType.Https)
+            {
+                // The infra cannot currently reply to Http(s) record queries.
+                queryLogger.Information($"Http(s) record query for '{question.Name}'");
+                response.ReturnCode = ReturnCode.NoError;
+                return;
+            }
+
             if (question.RecordType != RecordType.A && question.RecordType != RecordType.CName)
             {
                 queryLogger.Warning($"Record type on Question is neither A nor CNAME: {Enum.GetName(typeof(RecordType), question.RecordType)}");
